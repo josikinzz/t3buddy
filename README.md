@@ -1,5 +1,7 @@
 # t3buddy
 
+<p align="center"><img src="docs/t3boii.png" alt="T3boii, the desk pet, with his agents orbiting him as glowing orbs" width="520"></p>
+
 The app itself is called Local Model Widget; T3boii is its desk pet.
 
 A desktop heads-up display for macOS that works as a companion app to T3 Code. It connects to the T3 Code server you already run on your Mac through T3 Code's MCP server, and shows your agents live on the desktop: every active thread and subagent, what each one is doing, which ones are waiting on you, and which ones failed. Alongside that it shows your local models, subscription usage, memory pressure and token use as a set of small desktop cards.
