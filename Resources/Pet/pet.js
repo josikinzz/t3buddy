@@ -1186,7 +1186,7 @@ function pose(t, dt) {
   // Each sob: a quick catch of breath, then a shudder.
   const sobPhase = (sinceCry * 1.15) % 1;
   const sob = reducedMotion ? 0 : burst * Math.pow(Math.sin(Math.PI * Math.min(1, sobPhase / 0.4)), 2) * (sobPhase < 0.4 ? 1 : 0);
-  const shudder = reducedMotion ? 0 : burst * Math.sin(t * 43) * Math.exp(-((sobPhase - 0.42) ** 2) / 0.006);
+  const shudder = reducedMotion ? 0 : burst * Math.sin(t * 28) * Math.exp(-((sobPhase - 0.42) ** 2) / 0.005);
 
   if (burst > 0) sleep.active = t;   // crying keeps him up (without the stretch a wake brings)
 
@@ -1220,9 +1220,9 @@ function pose(t, dt) {
   rig.position.y = bob + 0.12 * p - 0.045 * busy - 0.04 * S + 0.06 * startle * amp + 0.08 * D * Math.abs(Math.sin(beat / 2))
     + holdHop + 0.1 * hop + 0.03 * flinch + 0.05 * spinning - 0.07 * sad + 0.022 * sob;
   const lean = pet.over && L > 0.02 ? clamp((pet.x - ballOnPage().x) / 220, -1, 1) * -0.08 * L : 0;
-  const purr = reducedMotion ? 0 : 0.012 * L * Math.sin(t * 22);
+  const purr = reducedMotion ? 0 : 0.009 * L * Math.sin(t * 16);
   rig.rotation.z = amp * 0.025 * Math.sin(t * TAU / 6.1 + 0.6) + lean + purr + motion.tilt + 0.07 * odd + 0.16 * D * Math.sin(beat / 2)
-    + 0.12 * dizzy * Math.sin(t * 5.2) * amp + 0.018 * shudder;
+    + 0.12 * dizzy * Math.sin(t * 5.2) * amp + 0.011 * shudder;
   const spinTurn = sinceSpin < SPIN_S ? spin.dir * TAU * (spinU < 0.5 ? 4 * spinU ** 3 : 1 - Math.pow(-2 * spinU + 2, 3) / 2) : 0;
   rig.rotation.y = amp * 0.07 * Math.sin(t * TAU / 9.3) * (1 - D) + danceSpin + spinTurn;
   rig.rotation.x = -0.05 * open + 0.04 * gulpPulse - 0.13 * flinch + 0.06 * H + 0.07 * sad - 0.03 * sob;
@@ -1321,7 +1321,7 @@ function pose(t, dt) {
   glow.uPucker.value = debug.pucker ?? Math.max(sucking, 0.35 * yawn, 0.5 * flinch, 0.2 * sad);   // glum: a pout
   glow.uSmirk.value = debug.smirk ?? odd;
   // Crying, his mouth turns right down and trembles.
-  glow.uFrown.value = debug.frown ?? Math.max(frown, 0.95 * sad + (reducedMotion ? 0 : 0.08 * burst * Math.sin(t * 19)));
+  glow.uFrown.value = debug.frown ?? Math.max(frown, 0.95 * sad + (reducedMotion ? 0 : 0.05 * burst * Math.sin(t * 14)));
 
   // Glow levels for the shader and sprites.
   glow.uPsy.value = psy;

@@ -502,7 +502,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       const from = orb.failFrom;
       const spot = project({ offset: geo.gap0 + ORB * 0.4 }, from.angle);
       if (orb.seenAt === null) {
-        const shiver = motion * Math.max(0, Math.sin(t * 0.9 + orb.seed)) ** 12 * Math.sin(t * 60) * ORB * 0.03;
+        const shiver = motion * Math.max(0, Math.sin(t * 0.55 + orb.seed)) ** 18 * Math.sin(t * 34) * ORB * 0.02;
         return { x: spot.x + shiver, y: spot.y, scale: Math.max(1, from.scale) * 1.04, z: 900 };
       }
       const age = Math.min(t - orb.seenAt, ACKED_FADE_S);
@@ -945,7 +945,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     }
     const dark = smoothstep(0.03, 0.42, u);
     const jolt = still ? 0 : u < 0.12 ? Math.sin(u / 0.12 * Math.PI) : 0;
-    const shiver = still ? 0 : Math.sin(t * 70 + orb.seed) * ORB * 0.025 * (1 - smoothstep(0.08, 0.45, u));
+    const shiver = still ? 0 : Math.sin(t * 40 + orb.seed) * ORB * 0.018 * (1 - smoothstep(0.08, 0.45, u));
     orb.page = { x: start.x + shiver, y: start.y + (still ? 0 : smoothstep(0.4, 1, u) * ORB * 0.18) };
     orb.scale = start.scale * (1 + 0.14 * jolt);
     orb.opacity = (start.opacity ?? 1) * (still ? 1 - smoothstep(0.62, 1, u) : 1);
