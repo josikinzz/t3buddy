@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' file:; script-src 'self' file: 'unsafe-inline'; img-src 'self' file: data: blob:; connect-src 'self' file: data: blob:; style-src 'self' file: 'unsafe-inline'">
+<title>T3boii</title>
+<link rel="icon" href="data:,">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: transparent; }
+  body { -webkit-user-select: none; user-select: none; }
+  /* The stage holds T3boii's canvas. Its centre is his position on the layer. */
+  #stage { position: fixed; left: 0; top: 0; will-change: transform; touch-action: none; cursor: grab; }
+  #stage.dragging { cursor: grabbing; }
+  #stage canvas { display: block; width: 100%; height: 100%; }
+  /* Orbs ride rings around him: the near (lower) half of a ring in #orbits, over his canvas,
+     the far (upper) half in #orbits-back, under it. Each layer starts with a canvas for the energy lines. */
+  #stage { z-index: 1; }
+  #orbits, #orbits-back { position: fixed; inset: 0; pointer-events: none; }
+  #orbits { z-index: 2; }
+  #orbits-back { z-index: 0; }
+  .orbit-lines { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+  .orb { position: absolute; left: 0; top: 0; width: var(--orb, 36px); height: var(--orb, 36px); will-change: transform, opacity; transform-origin: 50% 50%;
+    filter: brightness(calc(.74 + .26 * var(--lit, 1))); }
+  /* Every face is a little sphere: a lit highlight up and left, a darker limb, a soft shadow below. */
+  .orb-face { position: absolute; inset: 0; z-index: 1; border-radius: 50%; overflow: hidden; display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42); transition: box-shadow .25s ease, filter .25s ease; }
+  .orb-face::after { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle at 33% 27%, rgba(255, 255, 255, .62) 0, rgba(255, 255, 255, .18) 15%, rgba(255, 255, 255, 0) 34%),
+      radial-gradient(circle at 50% 44%, rgba(0, 0, 0, 0) 50%, rgba(14, 8, 34, .4) 100%);
+    box-shadow: inset 0 calc(var(--orb, 36px) * -.07) calc(var(--orb, 36px) * .14) rgba(14, 8, 34, .3), inset 0 calc(var(--orb, 36px) * .03) calc(var(--orb, 36px) * .05) rgba(255, 255, 255, .28); }
+  /* A favicon keeps its own transparent background: it floats in a clear glass bubble. */
+  .orb-face.favicon { background: radial-gradient(circle at 50% 52%, rgba(255, 255, 255, .02) 0 56%, rgba(214, 200, 255, .16) 82%, rgba(255, 255, 255, .36) 100%);
+    box-shadow: 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .18); }
+  .orb-face.favicon::after { background: radial-gradient(circle at 31% 25%, rgba(255, 255, 255, .8) 0, rgba(255, 255, 255, .22) 9%, rgba(255, 255, 255, 0) 22%),
+      radial-gradient(ellipse 60% 30% at 55% 88%, rgba(255, 255, 255, .16) 0, rgba(255, 255, 255, 0) 100%);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22), inset 0 calc(var(--orb, 36px) * -.05) calc(var(--orb, 36px) * .1) rgba(190, 170, 255, .2); }
+  .orb-face.favicon .orb-icon { width: 72%; height: 72%; object-fit: contain; filter: drop-shadow(0 calc(var(--orb, 36px) * .03) calc(var(--orb, 36px) * .04) rgba(0, 0, 0, .45)); }
+  .orb-face.photo .orb-icon { width: 100%; height: 100%; object-fit: cover; }
+  /* A subagent: a dark glossy sphere wearing its provider's logo. */
+  .orb-face.provider { background: radial-gradient(circle at 34% 30%, #5d5770 0, #2b2836 48%, #121019 100%); }
+  .orb-face.provider .orb-icon { width: 60%; height: 60%; object-fit: contain; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .6)); }
+  /* A logo with no transparency (Grok Bot's) fills the sphere, cut round. */
+  .orb-face.provider.photo-logo .orb-icon { width: 100%; height: 100%; object-fit: cover; filter: none; }
+  /* Grok Bot's own icon as the face: its badge would only repeat it. */
+  .orb-face.photo .orb-badge { display: none; }
+  /* A photo avatar ringed in its colour (Grok Bot's agents): the ring is drawn over the photo, not under it. */
+  .orb-face.ringed::before { content: ""; position: absolute; inset: 0; border-radius: 50%; pointer-events: none; box-shadow: inset 0 0 0 calc(var(--orb, 36px) * .07) var(--ring); }
+  .orb-face.ringed .orb-icon { width: 100%; height: 100%; object-fit: cover; }
+  .orb-face.monogram { background: radial-gradient(circle at 34% 30%, color-mix(in srgb, var(--c) 60%, white) 0, var(--c) 46%, color-mix(in srgb, var(--c) 58%, black) 100%); }
+  .orb-face.monogram span { position: relative; z-index: 1; font: 700 calc(var(--orb, 36px) * .36)/1 ui-monospace, "SF Mono", Menlo, monospace; color: #fff; letter-spacing: .02em; text-shadow: 0 1px 2px rgba(0, 0, 0, .35); }
+  .orb-face.monogram span.single { font-size: calc(var(--orb, 36px) * .5); }
+  /* A thread's provider logo (transparent, as in T3 Code) sits small on the lower part of its
+     sphere, over the project icon (which keeps its full size and place), under the sphere's
+     highlight; a soft dark shadow lifts it off whatever is beneath. */
+  .orb-badge { position: absolute; z-index: 1; left: 50%; top: 77%; width: 30%; height: 30%; transform: translate(-50%, -50%); object-fit: contain;
+    filter: drop-shadow(0 0 calc(var(--orb, 36px) * .03) rgba(6, 3, 18, .7)) drop-shadow(0 calc(var(--orb, 36px) * .015) calc(var(--orb, 36px) * .015) rgba(0, 0, 0, .5)); }
+  .orb-badge.round { border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1px rgba(255, 255, 255, .55); }
+  .orb[data-mode="sat"] .orb-badge { display: none; }
+  /* How lively its thread is: a quick breath while busy, a slow one when quiet, still and dim when
+     it has been quiet for minutes (--stale, 0 .. 1). */
+  .orb[data-pace="busy"] .orb-face { animation: breathe 1.15s ease-in-out infinite; }
+  .orb[data-pace="quiet"] .orb-face { animation: breathe 3.2s ease-in-out infinite; }
+  .orb[data-pace="stale"] { filter: brightness(calc((.74 + .26 * var(--lit, 1)) * (1 - .38 * var(--stale, 0)))) saturate(calc(1 - .5 * var(--stale, 0))); }
+  @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.055); } }
+  /* Waiting on the owner: a "!" badge (not colour alone). */
+  .orb-alert { position: absolute; z-index: 4; right: calc(var(--orb, 36px) * -.08); top: calc(var(--orb, 36px) * -.1); width: calc(var(--orb, 36px) * .42); height: calc(var(--orb, 36px) * .42);
+    border-radius: 50%; display: none; align-items: center; justify-content: center; color: #1c1917;
+    background: radial-gradient(circle at 35% 30%, #fde68a 0, #f59e0b 55%, #b45309 100%);
+    font: 800 calc(var(--orb, 36px) * .3)/1 -apple-system, system-ui, sans-serif; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .92), 0 2px 4px rgba(0, 0, 0, .35); }
+  .orb[data-state="waiting"] .orb-alert { display: flex; animation: alert-bob 0.9s ease-in-out infinite; }
+  /* Waiting on you: the sphere pulses with amber light. */
+  .orb[data-state="waiting"] .orb-face { animation: wait-pulse 1.1s ease-in-out infinite; }
+  @keyframes wait-pulse {
+    0%, 100% { box-shadow: 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42), 0 0 calc(var(--orb, 36px) * .15) rgba(255, 176, 40, .35); }
+    50% { box-shadow: 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42), 0 0 calc(var(--orb, 36px) * .55) calc(var(--orb, 36px) * .08) rgba(255, 186, 52, .9); }
+  }
+  @keyframes alert-bob { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-12%) scale(1.08); } }
+  /* Failed: the sphere cracks and flushes red until you look at it; seen, it greys and sinks. */
+  .orb-crack { position: absolute; inset: 0; z-index: 2; display: none; pointer-events: none; border-radius: 50%; overflow: hidden; }
+  .orb-crack svg { display: block; width: 100%; height: 100%; }
+  .orb[data-state="failed"] .orb-crack { display: block; }
+  .orb[data-state="failed"] .orb-face { filter: sepia(.5) saturate(2.4) hue-rotate(-38deg) brightness(.82); box-shadow: 0 0 calc(var(--orb, 36px) * .35) rgba(255, 60, 70, .55), 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42); }
+  .orb[data-state="failed"][data-seen] .orb-face, .orb[data-state="failed"][data-seen] .orb-badge { filter: grayscale(1) brightness(.72) contrast(.9); box-shadow: none; }
+  .orb[data-state="failed"][data-seen] .orb-crack { opacity: .5; }
+  .orb.cracking .orb-face, .orb.cracking .orb-crack { animation: crack-jolt .6s cubic-bezier(.3, .7, .4, 1); }
+  @keyframes crack-jolt { 0% { transform: scale(1.18); } 15% { transform: translateX(-6%) scale(.96); } 30% { transform: translateX(5%); } 45% { transform: translateX(-3%); } 60% { transform: translateX(2%); } 100% { transform: none; } }
+  /* Psychic flight out of his forehead: a violet aura that fades as the orb settles. */
+  .orb.psychic .orb-face { box-shadow: 0 0 calc(var(--orb, 36px) * .35) calc(var(--orb, 36px) * .06) rgba(196, 165, 255, .85), 0 0 calc(var(--orb, 36px) * .9) rgba(150, 110, 255, .45); }
+  .orb.hover .orb-face { box-shadow: 0 0 calc(var(--orb, 36px) * .3) calc(var(--orb, 36px) * .04) rgba(236, 226, 255, .75), 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42); }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three/build/three.module.js" } }
+</script>
+</head>
+<body>
+<div id="orbits-back"></div>
+<div id="stage"><canvas id="t3boii-canvas" aria-label="T3boii"></canvas></div>
+<div id="orbits"></div>
+<script type="module" src="./pet.js"></script>
+</body>
+</html>

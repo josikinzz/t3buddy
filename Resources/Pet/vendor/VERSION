@@ -1,0 +1,11 @@
+three.js 0.186.1 (MIT, see three/LICENSE)
+Source: npm pack three@0.186.1
+  tarball sha256 8cd068708ea44f2c73c944b1cead2ba2f0d5c15c8fc194e5700f4e4f4a033fe7
+Files copied unchanged, paths kept so relative imports resolve:
+  three/build/three.module.js, three/build/three.core.js
+  three/examples/jsm/loaders/GLTFLoader.js
+  three/examples/jsm/utils/BufferGeometryUtils.js, three/examples/jsm/utils/SkeletonUtils.js
+The page maps the bare "three" import to three/build/three.module.js with an import map.
+
+../T3-rigged.glb: downloaded once from https://t3-dance-sand.vercel.app/T3-rigged.glb on 2026-10-14
+  sha256 b70a3b709576c458461d4ef17117a93b047a064ce6ca287bc6a8c48c51915116

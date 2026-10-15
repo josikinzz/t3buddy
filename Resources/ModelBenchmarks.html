@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Local Model Benchmarks</title>
+<style>
+  :root {
+    --bg: #ffffff;
+    --fg: #1c1e21;
+    --muted: #5c6470;
+    --accent: #2563eb;
+    --border: #d9dee5;
+    --table-head-bg: #f1f4f8;
+    --table-head-fg: #1c1e21;
+    --zebra: #f7f9fc;
+    --code-bg: #eef1f5;
+    --code-fg: #b3145a;
+    --hr: #e2e6ec;
+    --card-bg: #fafbfc;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14171a;
+      --fg: #e6e9ee;
+      --muted: #9aa4b2;
+      --accent: #6ea8fe;
+      --border: #2c333c;
+      --table-head-bg: #1f262e;
+      --table-head-fg: #e6e9ee;
+      --zebra: #1a1f25;
+      --code-bg: #232a31;
+      --code-fg: #ff8ac4;
+      --hr: #2c333c;
+      --card-bg: #181d22;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap {
+    max-width: 1080px;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 5rem;
+  }
+  h1 {
+    font-size: 2.1rem;
+    line-height: 1.2;
+    margin: 0 0 .35rem;
+    letter-spacing: -.01em;
+  }
+  h2 {
+    font-size: 1.5rem;
+    margin: 2.6rem 0 .9rem;
+    padding-bottom: .3rem;
+    border-bottom: 2px solid var(--border);
+    letter-spacing: -.01em;
+  }
+  h3 { font-size: 1.15rem; margin: 1.6rem 0 .6rem; }
+  .subtitle { color: var(--muted); font-size: 1.05rem; margin: 0 0 .25rem; }
+  .updated { color: var(--muted); font-style: italic; margin: 0 0 1.5rem; font-size: .95rem; }
+  p { margin: .8rem 0; }
+  a { color: var(--accent); text-decoration: none; word-break: break-word; }
+  a:hover { text-decoration: underline; }
+  code {
+    background: var(--code-bg);
+    color: var(--code-fg);
+    padding: .12em .4em;
+    border-radius: 5px;
+    font-family: "SF Mono", ui-monospace, "Cascadia Code", Menlo, Consolas, monospace;
+    font-size: .88em;
+  }
+  hr { border: 0; border-top: 1px solid var(--hr); margin: 2.5rem 0; }
+  .tag-line { color: var(--muted); margin: -.4rem 0 1rem; }
+  .note, .footnotes {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: .9rem 1.1rem;
+    margin: 1.1rem 0;
+  }
+  .footnotes { font-size: .9rem; color: var(--muted); }
+  .footnotes ol { margin: .3rem 0; padding-left: 1.4rem; }
+  .footnotes li { margin: .3rem 0; }
+  ul.sources { margin: .4rem 0 0; padding-left: 1.3rem; font-size: .92rem; word-break: break-word; }
+  ul.sources li { margin: .2rem 0; }
+  /* Tables */
+  .table-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    margin: 1.1rem 0;
+  }
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    font-size: .92rem;
+  }
+  th, td {
+    border: 1px solid var(--border);
+    padding: .5rem .7rem;
+    text-align: left;
+    vertical-align: top;
+  }
+  thead th {
+    background: var(--table-head-bg);
+    color: var(--table-head-fg);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  tbody tr:nth-child(even) { background: var(--zebra); }
+  /* Sticky header for the big master table */
+  .sticky thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+  }
+  .sticky { max-height: 80vh; overflow: auto; }
+  td code, th code { white-space: nowrap; }
+  .small { font-size: .9rem; color: var(--muted); }
+  sup a { font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>Local Model Benchmarks</h1>
+<p class="subtitle">A side-by-side benchmark comparison of the 13 LLMs currently installed for local use via Ollama.</p>
+<p class="updated">Last updated: 2026-06-28</p>
+
+<p>These are the user's 13 installed Ollama models, compared on the most broadly-shared benchmarks. Scores are taken from official model cards / papers and reputable third-party leaderboards (Artificial Analysis, LMArena, llm-stats, and others). <strong>All published scores reflect full-precision (BF16/FP8) weights &mdash; the user's local quants (shown in each Ollama tag) will perform somewhat below these numbers, with the largest hits typically on hard math and coding.</strong> Any number not confirmed against a primary source is marked <strong>(unverified)</strong> in the per-model tables and <strong>(unv.)</strong> in the master comparison table.</p>
+
+<h2>At a glance</h2>
+<div class="table-scroll">
+<table>
+<thead>
+<tr><th>Model (tag)</th><th>Params (total/active)</th><th>Type</th><th>Context</th><th>Quant size on disk</th><th>Best for</th></tr>
+</thead>
+<tbody>
+<tr><td><code>glm-4.5-air:Q2_K</code></td><td>106B / 12B (MoE)</td><td>Reasoning + instruct + coder/agentic</td><td>128K (131,072)</td><td>~2-bit Q2_K GGUF</td><td>Efficient local agentic reasoning + coding/tool-use at modest active-param cost</td></tr>
+<tr><td><code>deepseek-r1-distill-llama-70b:q4_K_M</code></td><td>70.6B dense</td><td>Reasoning</td><td>128K</td><td>~40&ndash;43 GB</td><td>Strong local math/reasoning + competitive coding at 70B scale, near-full-precision at q4</td></tr>
+<tr><td><code>qwen3-next-80b-instruct:q4_K_M</code></td><td>80B / ~3B (MoE)</td><td>Instruct (non-thinking)</td><td>256K (262,144), ~1M YaRN</td><td>~46&ndash;48.5 GB</td><td>General-purpose long-context assistant, coding + instruction-following at ~3B-active speed</td></tr>
+<tr><td><code>qwen3-next-80b-thinking:q4_K_M</code></td><td>80B / ~3B (MoE)</td><td>Reasoning (thinking)</td><td>256K (262,144), ~1M YaRN</td><td>~46&ndash;48.5 GB</td><td>Memory-efficient long-context reasoning, math, and agentic/tool-use</td></tr>
+<tr><td><code>gemma4-heretic-uncensored:31b-q8_0</code></td><td>30.7B dense</td><td>Multimodal instruct (abliterated/uncensored)</td><td>256K</td><td>~33 GB (q8_0)</td><td>Uncensored creative writing, roleplay, fiction, coding near base Gemma 4 31B quality</td></tr>
+<tr><td><code>qwen3-coder-next:q4_K_M</code></td><td>80B / 3B (MoE)</td><td>Coder (agentic, non-thinking)</td><td>256K (262,144), toward ~1M</td><td>~52 GB</td><td>High-throughput long-context agentic coding (repo-scale SWE-bench, tool-calling)</td></tr>
+<tr><td><code>glm-4.7-flash:q4_K_M</code></td><td>~30&ndash;31B / ~3B (MoE)</td><td>Reasoning + coder/agentic</td><td>~200K (198K Ollama)</td><td>~18 GB</td><td>Low-VRAM (~18 GB) agentic coding + reasoning with long context; strongest open ~30B class</td></tr>
+<tr><td><code>gpt-oss:20b</code></td><td>20.9B / 3.61B (MoE, MXFP4)</td><td>Reasoning + agentic/coding</td><td>128K (131,072)</td><td>~14 GB (Ollama default)</td><td>Local/edge reasoning + agentic/coding on a single ~16 GB GPU, high effort with tools</td></tr>
+<tr><td><code>gpt-oss-abliterated:20b-q8_0</code></td><td>20.9B / 3.61B (MoE)</td><td>Reasoning + agentic/coding (abliterated/uncensored)</td><td>128K (131,072)</td><td>~22 GB (20.6 GiB, Q8_0)</td><td>Uncensored local reasoning/coding + unrestricted creative writing at near-base gpt-oss quality</td></tr>
+<tr><td><code>qwen3.6:latest</code></td><td>35B / ~3B (MoE)</td><td>Reasoning + coder, multimodal (text+image)</td><td>256K (262,144), ~1M YaRN</td><td>~24 GB</td><td>Local agentic coding + repo/frontend dev plus strong math reasoning at ~3B-active speed</td></tr>
+<tr><td><code>gemma4:latest</code></td><td>~4.5B effective (E4B)</td><td>Multimodal (text+image+audio)</td><td>128K</td><td>~9.6 GB</td><td>On-device/single-GPU multimodal where E4B punches above ~4.5B-effective weight</td></tr>
+<tr><td><code>deepseek-r1:32b</code></td><td>32.8B dense</td><td>Reasoning</td><td>128K (131,072)</td><td>~20 GB (Q4_K_M)</td><td>Local math, science (GPQA), competitive-coding reasoning on a single 24 GB GPU, ~lossless at Q4</td></tr>
+<tr><td><code>qwen3-coder:30b</code></td><td>30.5B / 3.3B (MoE)</td><td>Coder (agentic, non-thinking)</td><td>256K (262,144), 1M YaRN</td><td>~17.7 GB</td><td>Local agentic coding + tool-use needing long-context repo understanding at low active-param cost</td></tr>
+</tbody>
+</table>
+</div>
+
+<h2>Master benchmark comparison</h2>
+<p>One row per model on the most broadly-shared benchmarks. "&mdash;" means no published number for that model. "(unv.)" marks values not confirmed against a primary source. For reasoning models that report effort-specific or "with tools" numbers, the headline (best / high-effort) value is shown. <strong>For GPT-OSS, the high-effort, no-tools numbers are used in this table.</strong></p>
+<div class="table-scroll sticky">
+<table>
+<thead>
+<tr><th>Model (tag)</th><th>MMLU-Pro</th><th>GPQA-Diamond</th><th>AIME</th><th>MATH-500</th><th>LiveCodeBench</th><th>SWE-bench Verified</th><th>IFEval</th><th>Arena/LMArena Elo</th><th>AA Index</th></tr>
+</thead>
+<tbody>
+<tr><td><code>glm-4.5-air:Q2_K</code></td><td>81.4</td><td>75.0</td><td>89.4 (AIME 2024)</td><td>98.1</td><td>70.7</td><td>57.6</td><td>&mdash;</td><td>&mdash;</td><td>64.8 <sup><a href="#fn-aa-glm45air">[1]</a></sup></td></tr>
+<tr><td><code>deepseek-r1-distill-llama-70b:q4_K_M</code></td><td>71.2 (unv.)</td><td>65.2</td><td>70.0 (AIME 2024)</td><td>94.5</td><td>57.5</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>~10&ndash;16 (unv.)</td></tr>
+<tr><td><code>qwen3-next-80b-instruct:q4_K_M</code></td><td>80.6</td><td>72.9</td><td>69.5 (AIME 2025)</td><td>&mdash;</td><td>56.6 (v6)</td><td>&mdash;</td><td>87.6</td><td>1401 &plusmn;5 (LMArena)</td><td>14</td></tr>
+<tr><td><code>qwen3-next-80b-thinking:q4_K_M</code></td><td>82.7</td><td>77.2</td><td>87.8 (AIME 2025)</td><td>&mdash;</td><td>68.7 (v6)</td><td>&mdash;</td><td>88.9</td><td>~1370 (unv.)</td><td>20</td></tr>
+<tr><td><code>gemma4-heretic-uncensored:31b-q8_0</code></td><td>85.2 <sup><a href="#fn-base-gemma">[2]</a></sup></td><td>84.3 <sup><a href="#fn-base-gemma">[2]</a></sup></td><td>89.2 (AIME 2026, no tools) <sup><a href="#fn-base-gemma">[2]</a></sup></td><td>&mdash;</td><td>80.0 (v6) <sup><a href="#fn-base-gemma">[2]</a></sup></td><td>&mdash;</td><td>&mdash;</td><td>~1452 (unv.) <sup><a href="#fn-base-gemma">[2]</a></sup></td><td>&mdash;</td></tr>
+<tr><td><code>qwen3-coder-next:q4_K_M</code></td><td>80.52</td><td>74.49</td><td>89.01 (AIME 2024)</td><td>&mdash;</td><td>58.93 (v6)</td><td>71.3 <sup><a href="#fn-scaffold-cn">[3]</a></sup></td><td>&mdash;</td><td>&mdash;</td><td>~21&ndash;28 (unv.)</td></tr>
+<tr><td><code>glm-4.7-flash:q4_K_M</code></td><td>&mdash;</td><td>75.2</td><td>91.6 (AIME 2025)</td><td>&mdash;</td><td>64.0 (v6)</td><td>59.2</td><td>&mdash;</td><td>&mdash;</td><td>16 (unv.)</td></tr>
+<tr><td><code>gpt-oss:20b</code></td><td>73.6 <sup><a href="#fn-cm-gptoss">[4]</a></sup></td><td>71.5 (no tools)</td><td>92.1 (AIME 2024, no tools) <sup><a href="#fn-he-gptoss">[5]</a></sup></td><td>&mdash;</td><td>&mdash;</td><td>60.7</td><td>&mdash;</td><td>1318 &plusmn;6.4 (unv.)</td><td>15 (high)</td></tr>
+<tr><td><code>gpt-oss-abliterated:20b-q8_0</code></td><td>73.6 <sup><a href="#fn-abl-gptoss">[7]</a></sup></td><td>71.5 (no tools) <sup><a href="#fn-abl-gptoss">[7]</a></sup></td><td>92.1 (AIME 2024, no tools) <sup><a href="#fn-abl-gptoss">[7]</a></sup></td><td>&mdash;</td><td>&mdash;</td><td>60.7 <sup><a href="#fn-abl-gptoss">[7]</a></sup></td><td>&mdash;</td><td>1318 &plusmn;6.4 (unv.) <sup><a href="#fn-abl-gptoss">[7]</a></sup></td><td>15 (high) <sup><a href="#fn-abl-gptoss">[7]</a></sup></td></tr>
+<tr><td><code>qwen3.6:latest</code></td><td>85.2</td><td>86.0</td><td>92.7 (AIME 2026)</td><td>&mdash;</td><td>80.4 (v6)</td><td>73.4</td><td>&mdash;</td><td>&mdash;</td><td>32</td></tr>
+<tr><td><code>gemma4:latest</code></td><td>69.4</td><td>58.6</td><td>42.5 (AIME 2026, no tools)</td><td>&mdash;</td><td>52.0 (v6)</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>~12 (unv.)</td></tr>
+<tr><td><code>deepseek-r1:32b</code></td><td>low (unv.)</td><td>62.1</td><td>72.6 (AIME 2024)</td><td>94.3</td><td>57.2</td><td>&mdash;</td><td>72.5 (unv.)</td><td>&mdash;</td><td>11 (unv.)</td></tr>
+<tr><td><code>qwen3-coder:30b</code></td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>&mdash;</td><td>51.6 <sup><a href="#fn-scaffold-c30">[6]</a></sup></td><td>&mdash;</td><td>&mdash;</td><td>14</td></tr>
+</tbody>
+</table>
+</div>
+
+<div class="footnotes">
+<ol>
+<li id="fn-aa-glm45air">GLM-4.5-Air "AA-Index" 64.8 is the value from the official tech report table; Artificial Analysis' own third-party Intelligence Index for this model is ~17 (estimated). The 64.8 figure is shown here as the official-table number.</li>
+<li id="fn-base-gemma">Gemma 4 31B numbers are for the <strong>base</strong> <code>google/gemma-4-31b-it</code> model; the abliterated "heretic" finetune publishes no capability benchmarks. LMArena Elo ~1452 is for the base 31B (exact Elo unverified).</li>
+<li id="fn-scaffold-cn">Qwen3-Coder-Next SWE-bench Verified varies by scaffold: 70.6% (SWE-Agent), 71.1% (MiniSWE-Agent), 71.3% (OpenHands). Headline best (71.3, OpenHands) shown.</li>
+<li id="fn-cm-gptoss">GPT-OSS MMLU-Pro 73.6 is an HF community eval (reasoning effort not stated); the OpenAI card does not report MMLU-Pro.</li>
+<li id="fn-he-gptoss">GPT-OSS values are high-effort, no-tools where applicable. AIME 2025 (no tools, high) is 91.7; AIME 2024 (no tools, high) 92.1 shown. With tools the numbers are higher (e.g. AIME 2025 with tools 98.7).</li>
+<li id="fn-scaffold-c30">Qwen3-Coder-30B SWE-bench Verified 51.6 is Qwen-reported (OpenHands, 100 turns) from HF discussion #30.</li>
+<li id="fn-abl-gptoss">These are <strong>base</strong> <code>openai/gpt-oss-20b</code> numbers (identical to the <code>gpt-oss:20b</code> row, high-effort/no-tools where applicable); the abliterated/uncensored NEO-Imatrix finetune (DavidAU, on Huihui-ai's BF16-abliterated base) publishes no separate capability benchmarks. Abliteration removes refusals but typically costs a few points on some reasoning/IF benchmarks (GSM8K-style math most sensitive), so treat these as an upper bound. Local quant here is Q8_0 (near-lossless vs the abliterated weights).</li>
+</ol>
+</div>
+
+<h2>How to read this</h2>
+<div class="note">
+<ul>
+<li><strong>MoE active-param speed.</strong> Several models are sparse Mixture-of-Experts: total parameters set the memory/disk footprint, but only the <em>active</em> params run per token, so inference speed tracks the active count (e.g. ~3B-active MoEs run far faster than their total size suggests).</li>
+<li><strong>Quant impact.</strong> Every published number above is full-precision. The user runs quantized GGUFs (the suffix in each tag). Higher-bit quants (q8_0, q5/q4_K_M) lose little; an aggressive ~2-bit quant (Q2_K, used here for GLM-4.5-Air) can lose meaningfully on reasoning/coding/long-context. Hard math and coding degrade first.</li>
+<li><strong>Reasoning vs instruct.</strong> "Thinking"/reasoning models emit explicit chains-of-thought and score much higher on math/reasoning but are slower and more verbose; "instruct"/non-thinking models are faster and better for direct chat and many coding/agentic tasks.</li>
+<li><strong>Not always apples-to-apples.</strong> Some 2026 models report newer benchmark suites (AIME 2026, HMMT 2025/2026, LiveCodeBench v6, SWE-bench Pro) instead of, or alongside, the older ones. The AIME year is noted in each cell; columns aren't always directly comparable across model generations.</li>
+</ul>
+</div>
+
+<hr>
+
+<h2>GLM-4.5-Air</h2>
+<p class="tag-line">Ollama tag: <code>glm-4.5-air:Q2_K</code></p>
+<p>GLM-4.5-Air is an open-weight (MIT) hybrid-reasoning MoE from Zhipu AI / Z.ai, released Jul 28&ndash;Aug 8 2025. 106B total params, 12B active (128 routed experts + shared, ~8&ndash;9 activated), 128K context (131,072), up to 96K output. Compact sibling of GLM-4.5 (355B/32B); base + thinking/non-thinking instruct; targets Agentic/Reasoning/Coding. The user's Q2_K GGUF is an aggressive ~2-bit local quant.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>MMLU-Pro</td><td>81.4</td><td>Official model card / tech report (via llm-stats, Artificial Analysis)</td></tr>
+<tr><td>GPQA (Diamond)</td><td>75.0</td><td>Official tech report (llm-stats); HF card lists 71.72 (variant)</td></tr>
+<tr><td>AIME 2024</td><td>89.4</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>MATH-500</td><td>98.1</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>LiveCodeBench</td><td>70.7</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>SWE-bench Verified</td><td>57.6</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>Terminal-Bench</td><td>30.0</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>TAU-bench (Retail)</td><td>77.9</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>TAU-bench (Airline)</td><td>60.8</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>BFCL-v3</td><td>76.4</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>BrowseComp</td><td>21.3</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>SciCode</td><td>37.3</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>Humanity's Last Exam (HLE)</td><td>10.6</td><td>Official tech report (llm-stats); HF card 8.12 (variant)</td></tr>
+<tr><td>AA-Index (official table)</td><td>64.8</td><td>Official tech report (llm-stats)</td></tr>
+<tr><td>Overall avg across 12 benchmarks</td><td>59.8</td><td>Official GLM-4.5 GitHub / blog</td></tr>
+<tr><td>Artificial Analysis Intelligence Index</td><td>17 (estimated)</td><td>Artificial Analysis (third-party)</td></tr>
+<tr><td>AIME 2025</td><td>not separately published for Air (unverified)</td><td>&mdash;</td></tr>
+<tr><td>MMLU / GSM8K / HumanEval / MBPP / BBH / DROP / IFEval / MT-Bench / Arena-Hard / AlpacaEval / GAIA / LMArena Elo</td><td>not published for GLM-4.5-Air (unverified)</td><td>&mdash;</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Quant impact (Q2_K):</strong> Most aggressive practical quant (~2-bit), an emergency/low-VRAM option with meaningful quality loss vs reference; published scores are full-precision. Unsloth dynamic Q2_K_XL cuts KL-divergence ~7.5% vs naive Q2_K; expect the largest hits on reasoning/coding/long-context. (Vendor-specific Q2_K scores unverified.)</p>
+<p><strong>Best for:</strong> Efficient local/agentic reasoning + coding and tool-use at modest active-param cost; treat published scores as full-precision references a Q2_K quant will underperform.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://huggingface.co/zai-org/GLM-4.5-Air">https://huggingface.co/zai-org/GLM-4.5-Air</a></li>
+<li><a href="https://github.com/zai-org/GLM-4.5">https://github.com/zai-org/GLM-4.5</a></li>
+<li><a href="https://arxiv.org/abs/2508.06471">https://arxiv.org/abs/2508.06471</a></li>
+<li><a href="https://docs.z.ai/guides/llm/glm-4.5">https://docs.z.ai/guides/llm/glm-4.5</a></li>
+<li><a href="https://llm-stats.com/models/glm-4.5-air">https://llm-stats.com/models/glm-4.5-air</a></li>
+<li><a href="https://llm-stats.com/models/compare/glm-4.5-vs-glm-4.5-air">https://llm-stats.com/models/compare/glm-4.5-vs-glm-4.5-air</a></li>
+<li><a href="https://artificialanalysis.ai/models/glm-4-5-air">https://artificialanalysis.ai/models/glm-4-5-air</a></li>
+<li><a href="https://huggingface.co/unsloth/GLM-4.5-Air-GGUF">https://huggingface.co/unsloth/GLM-4.5-Air-GGUF</a></li>
+<li><a href="https://unsloth.ai/docs/basics/unsloth-dynamic-2.0-ggufs">https://unsloth.ai/docs/basics/unsloth-dynamic-2.0-ggufs</a></li>
+</ul>
+
+<hr>
+
+<h2>DeepSeek-R1-Distill-Llama-70B</h2>
+<p class="tag-line">Ollama tag: <code>deepseek-r1-distill-llama-70b:q4_K_M</code></p>
+<p>Dense 70B reasoning model = Llama-3.3-70B-Instruct fine-tuned on ~800K R1 reasoning samples. ~70.6B params (BF16), 128K context, released Jan 20&ndash;22 2025 (arXiv:2501.12948). Emits <code>&lt;think&gt;</code> chains. Official evals: 32,768 max gen, temp 0.6, top-p 0.95, pass@1 over 64 samples. q4_K_M GGUF ~40&ndash;43 GB.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>AIME 2024 (pass@1)</td><td>70.0</td><td>Official model card / R1 paper</td></tr>
+<tr><td>AIME 2024 (cons@64)</td><td>86.7</td><td>Official model card / R1 paper</td></tr>
+<tr><td>MATH-500 (pass@1)</td><td>94.5</td><td>Official model card / R1 paper</td></tr>
+<tr><td>GPQA Diamond (pass@1)</td><td>65.2</td><td>Official model card / R1 paper</td></tr>
+<tr><td>LiveCodeBench (pass@1)</td><td>57.5</td><td>Official model card / R1 paper</td></tr>
+<tr><td>Codeforces (rating)</td><td>1633</td><td>Official model card / R1 paper</td></tr>
+<tr><td>MMLU (5-shot)</td><td>78.04</td><td>RedHatAI eval (BF16 base)</td></tr>
+<tr><td>GSM8K (strict, 5-shot)</td><td>93.03</td><td>RedHatAI eval (BF16 base)</td></tr>
+<tr><td>ARC-Challenge (25-shot)</td><td>63.65</td><td>RedHatAI eval (BF16 base)</td></tr>
+<tr><td>HellaSwag (10-shot)</td><td>84.85</td><td>RedHatAI eval (BF16 base)</td></tr>
+<tr><td>Winogrande (5-shot)</td><td>78.22</td><td>RedHatAI eval (BF16 base)</td></tr>
+<tr><td>TruthfulQA (MC2)</td><td>56.67</td><td>RedHatAI eval (BF16 base)</td></tr>
+<tr><td>OpenLLM V1 average</td><td>75.74</td><td>RedHatAI eval (BF16 base)</td></tr>
+<tr><td>MMLU-Pro</td><td>71.2 (unverified)</td><td>designforonline.com aggregator</td></tr>
+<tr><td>Artificial Analysis Intelligence Index</td><td>~10&ndash;16 (unverified)</td><td>Artificial Analysis (estimated)</td></tr>
+<tr><td>AIME 2025</td><td>not reliably published (unverified)</td><td>&mdash;</td></tr>
+<tr><td>HumanEval / MBPP / SWE-bench / BBH / IFEval / LMArena Elo</td><td>no official numbers (unverified)</td><td>&mdash;</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Quant impact (q4_K_M):</strong> Minimal. RedHatAI INT4 (w4a16) recovered ~100.2% of BF16 OpenLLM-V1 avg (MMLU 98.9%, GSM8K 100%). q4_K_M is closely comparable. No significant reasoning degradation vs FP8 reported.</p>
+<p><strong>Best for:</strong> Strong local math/reasoning (AIME, MATH-500) and competitive coding at 70B scale, ~48 GB VRAM via q4_K_M with near-full-precision quality.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B">https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Llama-70B</a></li>
+<li><a href="https://arxiv.org/html/2501.12948v1">https://arxiv.org/html/2501.12948v1</a></li>
+<li><a href="https://huggingface.co/RedHatAI/DeepSeek-R1-Distill-Llama-70B-quantized.w4a16">https://huggingface.co/RedHatAI/DeepSeek-R1-Distill-Llama-70B-quantized.w4a16</a></li>
+<li><a href="https://artificialanalysis.ai/models/deepseek-r1-distill-llama-70b">https://artificialanalysis.ai/models/deepseek-r1-distill-llama-70b</a></li>
+<li><a href="https://llm-stats.com/models/deepseek-r1-distill-llama-70b">https://llm-stats.com/models/deepseek-r1-distill-llama-70b</a></li>
+<li><a href="https://huggingface.co/lmstudio-community/DeepSeek-R1-Distill-Llama-70B-GGUF">https://huggingface.co/lmstudio-community/DeepSeek-R1-Distill-Llama-70B-GGUF</a></li>
+<li><a href="https://designforonline.com/ai-models/deepseek-r1-distill-llama-70b/">https://designforonline.com/ai-models/deepseek-r1-distill-llama-70b/</a> (MMLU-Pro, unverified)</li>
+</ul>
+
+<hr>
+
+<h2>Qwen3-Next-80B-A3B-Instruct</h2>
+<p class="tag-line">Ollama tag: <code>qwen3-next-80b-instruct:q4_K_M</code></p>
+<p>Qwen Team (Alibaba), released Sep 2025. 80B-total / ~3B-active sparse MoE (512 experts, 10 routed + 1 shared), hybrid attention (3:1 Gated DeltaNet : Gated Attention) + Multi-Token Prediction. Native 262,144 (256K) context, ~1M via YaRN. Instruct = non-thinking variant. All official scores full-precision.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>MMLU-Pro</td><td>80.6</td><td>Qwen official (HF card)</td></tr>
+<tr><td>MMLU-Redux</td><td>90.9</td><td>Qwen official (HF card)</td></tr>
+<tr><td>GPQA (Diamond)</td><td>72.9</td><td>Qwen official (HF card)</td></tr>
+<tr><td>SuperGPQA</td><td>58.8</td><td>Qwen official (HF card)</td></tr>
+<tr><td>AIME 2025</td><td>69.5</td><td>Qwen official (HF card)</td></tr>
+<tr><td>HMMT 2025</td><td>54.1</td><td>Qwen official (HF card)</td></tr>
+<tr><td>LiveBench (2024-11-25)</td><td>75.8</td><td>Qwen official (HF card)</td></tr>
+<tr><td>LiveCodeBench v6</td><td>56.6</td><td>Qwen official (HF card)</td></tr>
+<tr><td>MultiPL-E</td><td>87.8</td><td>Qwen official (HF card)</td></tr>
+<tr><td>Aider-Polyglot</td><td>49.8</td><td>Qwen official (HF card); Aider via llm-stats (0.498)</td></tr>
+<tr><td>IFEval</td><td>87.6</td><td>Qwen official (HF card)</td></tr>
+<tr><td>Arena-Hard v2</td><td>82.7</td><td>Qwen official (HF card)</td></tr>
+<tr><td>Creative Writing v3</td><td>85.3</td><td>Qwen official (HF card)</td></tr>
+<tr><td>WritingBench</td><td>87.3</td><td>Qwen official (HF card)</td></tr>
+<tr><td>BFCL-v3 (tool use)</td><td>70.3</td><td>Qwen official (HF card)</td></tr>
+<tr><td>MultiIF</td><td>75.8</td><td>Qwen official (HF card)</td></tr>
+<tr><td>MMLU-ProX</td><td>76.7</td><td>Qwen official (HF card)</td></tr>
+<tr><td>INCLUDE</td><td>78.9</td><td>Qwen official (HF card)</td></tr>
+<tr><td>PolyMATH</td><td>45.9</td><td>Qwen official (HF card)</td></tr>
+<tr><td>RULER (avg, to 1M ctx)</td><td>91.8</td><td>Qwen official (HF card)</td></tr>
+<tr><td>RULER @ 1M tokens</td><td>80.3</td><td>Qwen official (HF card)</td></tr>
+<tr><td>LMArena Chatbot Arena (Text Elo)</td><td>1401 &plusmn;5 (rank ~#53)</td><td>LMArena (datalearner/lmmarketcap mirrors)</td></tr>
+<tr><td>Artificial Analysis Intelligence Index (v4.1)</td><td>14 (#6/39 in class)</td><td>Artificial Analysis</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small">Not reported by Qwen (don't attribute): plain MMLU, AIME 2024, GSM8K, MATH-500, HumanEval, MBPP, BigCodeBench, SWE-bench Verified.</p>
+<p><strong>Quant impact (q4_K_M):</strong> No model-specific numbers. Unsloth recommends UD-Q4_K_XL (~46.1 GB) over Q4_K_M (~48.5 GB). General Q4_K_M ~97&ndash;99.5% of FP16; IFEval shows largest drop (~&minus;6.6 pts in one study). Caveat: needs recent llama.cpp (Gated DeltaNet support PR #16095 merged Nov 28 2025; a Dec 2025 imatrix regression caused repetition loops on Q4_K_M, re-fixed ~Jan 12 2026) &mdash; use post-Jan-2026 builds.</p>
+<p><strong>Best for:</strong> Strong general-purpose local assistant &mdash; excellent long-context (256K&ndash;1M), coding, instruction-following at ~3B active-param speed.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct">https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Instruct</a></li>
+<li><a href="https://www.alibabacloud.com/blog/602536">https://www.alibabacloud.com/blog/602536</a></li>
+<li><a href="https://qwen.ai/blog?id=4074cca80393150c248e508aa62983f9cb7d27cd">https://qwen.ai/blog?id=4074cca80393150c248e508aa62983f9cb7d27cd</a></li>
+<li><a href="https://artificialanalysis.ai/models/qwen3-next-80b-a3b-instruct">https://artificialanalysis.ai/models/qwen3-next-80b-a3b-instruct</a></li>
+<li><a href="https://www.datalearner.com/en/leaderboards/external/text-generation">https://www.datalearner.com/en/leaderboards/external/text-generation</a></li>
+<li><a href="https://llm-stats.com/benchmarks/aider-polyglot">https://llm-stats.com/benchmarks/aider-polyglot</a></li>
+<li><a href="https://huggingface.co/unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF">https://huggingface.co/unsloth/Qwen3-Next-80B-A3B-Instruct-GGUF</a></li>
+<li><a href="https://github.com/ggml-org/llama.cpp/pull/16095">https://github.com/ggml-org/llama.cpp/pull/16095</a></li>
+</ul>
+
+<hr>
+
+<h2>Qwen3-Next-80B-A3B-Thinking</h2>
+<p class="tag-line">Ollama tag: <code>qwen3-next-80b-thinking:q4_K_M</code></p>
+<p>Qwen Team (Alibaba), released Sep 11 2025 (Apache 2.0). Reasoning variant of Qwen3-Next. ~80B total / ~3B active MoE (512 experts, 10 routed + 1 shared, 48 layers), hybrid linear attention (Gated DeltaNet + Gated Attention). Native 262,144 context, ~1M via YaRN. Thinking-only mode. Beats Gemini-2.5-Flash-Thinking on several benchmarks per Qwen.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>AIME 2025</td><td>87.8</td><td>Qwen HF model card</td></tr>
+<tr><td>HMMT 2025</td><td>73.9</td><td>Qwen HF model card</td></tr>
+<tr><td>PolyMATH</td><td>56.3</td><td>Qwen HF model card</td></tr>
+<tr><td>GPQA (Diamond)</td><td>77.2</td><td>Qwen HF model card</td></tr>
+<tr><td>SuperGPQA</td><td>60.8</td><td>Qwen HF model card</td></tr>
+<tr><td>MMLU-Pro</td><td>82.7</td><td>Qwen HF model card</td></tr>
+<tr><td>MMLU-Redux</td><td>92.5</td><td>Qwen HF model card</td></tr>
+<tr><td>MMLU-ProX</td><td>78.7</td><td>Qwen HF model card</td></tr>
+<tr><td>INCLUDE</td><td>78.9</td><td>Qwen HF model card</td></tr>
+<tr><td>LiveCodeBench v6 (25.02&ndash;25.05)</td><td>68.7</td><td>Qwen HF model card</td></tr>
+<tr><td>CFEval (Codeforces Elo)</td><td>2071</td><td>Qwen HF model card</td></tr>
+<tr><td>OJBench</td><td>29.7</td><td>Qwen HF model card</td></tr>
+<tr><td>LiveBench (2024-11-25)</td><td>76.6</td><td>Qwen HF model card</td></tr>
+<tr><td>Arena-Hard v2</td><td>62.3</td><td>Qwen HF model card</td></tr>
+<tr><td>IFEval</td><td>88.9</td><td>Qwen HF model card</td></tr>
+<tr><td>WritingBench</td><td>84.6</td><td>Qwen HF model card</td></tr>
+<tr><td>MultiIF</td><td>77.8</td><td>Qwen HF model card</td></tr>
+<tr><td>BFCL-v3 (tool use)</td><td>72.0</td><td>Qwen HF model card</td></tr>
+<tr><td>TAU1-Retail / TAU1-Airline</td><td>69.6 / 49.0</td><td>Qwen HF model card</td></tr>
+<tr><td>TAU2-Retail / Airline / Telecom</td><td>67.8 / 60.5 / 43.9</td><td>Qwen HF model card</td></tr>
+<tr><td>Artificial Analysis Intelligence Index</td><td>20 (#9/62)</td><td>Artificial Analysis</td></tr>
+<tr><td>AA output speed</td><td>177.6 tok/s</td><td>Artificial Analysis</td></tr>
+<tr><td>LMArena Elo</td><td>~1370 (unverified)</td><td>search aggregation</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small">Not on official card: AIME 2024, MATH-500, SWE-bench Verified, BigCodeBench, RULER (treat external figures as unverified).</p>
+<p><strong>Quant impact (q4_K_M):</strong> No official table. Comparable A3B MoE: q4_K_M ppl ~0.027 above q5_K_M, ~99.9% KL retention with Unsloth Dynamic 2.0; minor loss most visible on hard math (unverified for this exact model).</p>
+<p><strong>Best for:</strong> Local memory-efficient long-context reasoning, math, and agentic/tool-use where ~3B-active speed matters but near-frontier open reasoning quality is desired.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Thinking">https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Thinking</a></li>
+<li><a href="https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Thinking-FP8">https://huggingface.co/Qwen/Qwen3-Next-80B-A3B-Thinking-FP8</a></li>
+<li><a href="https://artificialanalysis.ai/models/qwen3-next-80b-a3b-reasoning">https://artificialanalysis.ai/models/qwen3-next-80b-a3b-reasoning</a></li>
+<li><a href="https://build.nvidia.com/qwen/qwen3-next-80b-a3b-thinking/modelcard">https://build.nvidia.com/qwen/qwen3-next-80b-a3b-thinking/modelcard</a></li>
+<li><a href="https://unsloth.ai/docs/models/tutorials/qwen3-next">https://unsloth.ai/docs/models/tutorials/qwen3-next</a></li>
+<li><a href="https://kaitchup.substack.com/p/running-qwen3-next-hybrid-attention">https://kaitchup.substack.com/p/running-qwen3-next-hybrid-attention</a></li>
+<li><a href="https://llm-stats.com/models/qwen3-next-80b-a3b-thinking">https://llm-stats.com/models/qwen3-next-80b-a3b-thinking</a></li>
+</ul>
+
+<hr>
+
+<h2>Gemma 4 31B (abliterated/uncensored finetune)</h2>
+<p class="tag-line">Ollama tag: <code>gemma4-heretic-uncensored:31b-q8_0</code></p>
+<p>Community "heretic"/abliterated (uncensored) build of Google DeepMind's Gemma 4 31B Instruct (<code>google/gemma-4-31b-it</code>). Base: 30.7B dense transformer, hybrid attention (local sliding-window + global), 256K context, multimodal (text+image, video via frames), Apache 2.0, released Apr 2 2026, training cutoff Jan 2025. "Heretic" = Philipp Emanuel Weidmann's automatic abliteration tool (TPE/Optuna optimizer minimizing refusals + KL-divergence). q8_0 build (~33 GB) = <code>pmarreck/gemma4-heretical</code> wrapping <code>trohrbaugh/gemma-4-31b-it-heretic-ara</code> (Arbitrary-Rank Ablation, layers 2&ndash;60).</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Refusal rate (after)</td><td>5/100 (was 98/100)</td><td>trohrbaugh HF / pmarreck GitHub</td><td>finetune-specific</td></tr>
+<tr><td>KL-divergence vs base</td><td>0.012</td><td>trohrbaugh HF / pmarreck GitHub</td><td>finetune-specific</td></tr>
+<tr><td>Capability benchmarks for finetune</td><td>None published</td><td>trohrbaugh HF</td><td>finetune-specific</td></tr>
+<tr><td>MMLU-Pro</td><td>85.2%</td><td>Gemma 4 model card</td><td>base model (31B)</td></tr>
+<tr><td>GPQA Diamond</td><td>84.3%</td><td>Gemma 4 model card</td><td>base model</td></tr>
+<tr><td>LiveCodeBench v6</td><td>80.0%</td><td>Gemma 4 model card</td><td>base model</td></tr>
+<tr><td>AIME 2026 (no tools)</td><td>89.2%</td><td>Gemma 4 model card</td><td>base model</td></tr>
+<tr><td>MATH-Vision</td><td>85.6%</td><td>Gemma 4 model card</td><td>base model (multimodal)</td></tr>
+<tr><td>BigBench Extra Hard</td><td>74.4%</td><td>Gemma 4 model card</td><td>base model</td></tr>
+<tr><td>MMMLU (multilingual MMLU)</td><td>88.4%</td><td>Gemma 4 model card</td><td>base model</td></tr>
+<tr><td>MMMU Pro (Vision)</td><td>76.9%</td><td>Gemma 4 model card</td><td>base model (multimodal)</td></tr>
+<tr><td>MRCR v2 (long context)</td><td>66.4%</td><td>Gemma 4 model card</td><td>base model</td></tr>
+<tr><td>LMArena Text Elo</td><td>~1452 (#3 open, #1 US open)</td><td>Google blog / Arena.ai</td><td>base model (unverified exact Elo)</td></tr>
+<tr><td>GSM8K / standard MATH / HumanEval / IFEval</td><td>Not reported by Google</td><td>Gemma 4 model card</td><td>base model</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Abliteration degradation:</strong> Heretic emphasizes low KL (0.012) over capability loss, but a comparative study (arXiv 2512.13655) finds abliteration generally degrades benchmarks slightly, with GSM8K math reasoning most sensitive. No degradation numbers for this specific finetune.</p>
+<p><strong>Best for:</strong> Uncensored creative writing, roleplay, fiction, and coding wanting near-base Gemma 4 31B quality with refusals removed &mdash; not for verified math/reasoning-critical work.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://ai.google.dev/gemma/docs/core/model_card_4">https://ai.google.dev/gemma/docs/core/model_card_4</a></li>
+<li><a href="https://blog.google/innovation-and-ai/technology/developers-tools/gemma-4/">https://blog.google/innovation-and-ai/technology/developers-tools/gemma-4/</a></li>
+<li><a href="https://huggingface.co/trohrbaugh/gemma-4-31b-it-heretic-ara">https://huggingface.co/trohrbaugh/gemma-4-31b-it-heretic-ara</a></li>
+<li><a href="https://github.com/pmarreck/gemma4-heretical">https://github.com/pmarreck/gemma4-heretical</a></li>
+<li><a href="https://github.com/p-e-w/heretic">https://github.com/p-e-w/heretic</a></li>
+<li><a href="https://arxiv.org/pdf/2512.13655">https://arxiv.org/pdf/2512.13655</a></li>
+</ul>
+<p class="small"><em>Note: no HF card literally named gemma4-heretic-uncensored; specs match the pmarreck/trohrbaugh build (probable, not certain, origin).</em></p>
+
+<hr>
+
+<h2>Qwen3-Coder-Next</h2>
+<p class="tag-line">Ollama tag: <code>qwen3-coder-next:q4_K_M</code></p>
+<p>Open-weight (Apache 2.0) agentic coding model, Qwen Team (Alibaba), released Feb 4 2026 (tech report arXiv:2603.00729). Base = Qwen3-Next-80B-A3B-Base. Ultra-sparse MoE: 80B total / 3B active (512 experts, 10 + 1 shared), hybrid (Gated DeltaNet + Gated Attention, 48 layers), 262,144 native context (toward ~1M), non-thinking only, ~370 languages. q4_K_M GGUF ~52 GB.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>SWE-bench Verified (SWE-Agent)</td><td>70.6%</td><td>Qwen tech report (arXiv 2603.00729)</td></tr>
+<tr><td>SWE-bench Verified (MiniSWE-Agent)</td><td>71.1%</td><td>Qwen tech report</td></tr>
+<tr><td>SWE-bench Verified (OpenHands)</td><td>71.3%</td><td>Qwen tech report</td></tr>
+<tr><td>SWE-bench Multilingual</td><td>62.8%</td><td>Qwen tech report</td></tr>
+<tr><td>SWE-bench Pro (SWE-Agent)</td><td>56.2%</td><td>Qwen tech report</td></tr>
+<tr><td>SWE-bench Pro (HF card label)</td><td>44.3%</td><td>HF model card</td></tr>
+<tr><td>Terminal-Bench 2.0 (best scaffold)</td><td>36.2%</td><td>Qwen tech report / HF card</td></tr>
+<tr><td>LiveCodeBench v6</td><td>58.93%</td><td>Qwen tech report</td></tr>
+<tr><td>Aider Polyglot</td><td>66.20%</td><td>Qwen tech report (Qwen's own measurement; not on aider.chat leaderboard)</td></tr>
+<tr><td>Codeforces (rating)</td><td>2100</td><td>Qwen tech report</td></tr>
+<tr><td>OJBench</td><td>23.01</td><td>Qwen tech report</td></tr>
+<tr><td>EvalPlus</td><td>86.56%</td><td>Qwen tech report</td></tr>
+<tr><td>MultiPL-E</td><td>88.23%</td><td>Qwen tech report</td></tr>
+<tr><td>CRUXEval</td><td>95.88%</td><td>Qwen tech report</td></tr>
+<tr><td>Spider (text-to-SQL)</td><td>83.66%</td><td>Qwen tech report</td></tr>
+<tr><td>BIRD-SQL</td><td>63.56%</td><td>Qwen tech report</td></tr>
+<tr><td>FullStackBench (en / zh)</td><td>60.58% / 57.38%</td><td>Qwen tech report</td></tr>
+<tr><td>Tool-call format following (avg, 5 scaffolds)</td><td>92.7%</td><td>Qwen tech report</td></tr>
+<tr><td>SecCodeBench</td><td>61.2%</td><td>Qwen / Winbuzzer</td></tr>
+<tr><td>CWEval (func-sec@1)</td><td>56.32%</td><td>Qwen / Winbuzzer</td></tr>
+<tr><td>MMLU</td><td>87.73%</td><td>Qwen tech report</td></tr>
+<tr><td>MMLU-Redux</td><td>91.18%</td><td>Qwen tech report</td></tr>
+<tr><td>MMLU-Pro</td><td>80.52%</td><td>Qwen tech report</td></tr>
+<tr><td>GPQA</td><td>74.49%</td><td>Qwen tech report</td></tr>
+<tr><td>SuperGPQA</td><td>57.45%</td><td>Qwen tech report</td></tr>
+<tr><td>AIME24</td><td>89.01%</td><td>Qwen tech report</td></tr>
+<tr><td>AIME25</td><td>83.07%</td><td>Qwen tech report</td></tr>
+<tr><td>HMMT25 (Feb / Nov)</td><td>70.21% / 75.57%</td><td>Qwen tech report</td></tr>
+<tr><td>Artificial Analysis Intelligence Index</td><td>~21&ndash;28 (unverified)</td><td>Artificial Analysis</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small">Not reported: BigCodeBench, HumanEval/+, MBPP/+, BFCL, Arena-Hard, LMArena Elo.</p>
+<p><strong>Quant impact (q4_K_M):</strong> No model-specific numbers. q4_K_M largely preserves code-gen (~parity with AWQ on HumanEval in comparable Qwen tests); 1&ndash;3% loss mainly on numerical/math; Q5_K_M/imatrix recommended for math-heavy work (unverified for this model).</p>
+<p><strong>Best for:</strong> Local high-throughput long-context agentic coding (repo-scale SWE-bench tasks, tool-calling in Claude Code/Cline/Qwen Code); less suited to heavy math precision at q4_K_M.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://qwen.ai/blog?id=qwen3-coder-next">https://qwen.ai/blog?id=qwen3-coder-next</a></li>
+<li><a href="https://huggingface.co/Qwen/Qwen3-Coder-Next">https://huggingface.co/Qwen/Qwen3-Coder-Next</a></li>
+<li><a href="https://arxiv.org/html/2603.00729v1">https://arxiv.org/html/2603.00729v1</a></li>
+<li><a href="https://ollama.com/library/qwen3-coder-next">https://ollama.com/library/qwen3-coder-next</a></li>
+<li><a href="https://winbuzzer.com/2026/02/04/alibaba-qwen3-coder-next-open-source-sparse-moe-coding-model-xcxwbn/">https://winbuzzer.com/2026/02/04/alibaba-qwen3-coder-next-open-source-sparse-moe-coding-model-xcxwbn/</a></li>
+<li><a href="https://artificialanalysis.ai/models/qwen3-coder-next">https://artificialanalysis.ai/models/qwen3-coder-next</a></li>
+<li><a href="https://aider.chat/docs/leaderboards/">https://aider.chat/docs/leaderboards/</a></li>
+<li><a href="https://unsloth.ai/docs/models/qwen3-coder-next">https://unsloth.ai/docs/models/qwen3-coder-next</a></li>
+</ul>
+
+<hr>
+
+<h2>GLM-4.7-Flash</h2>
+<p class="tag-line">Ollama tag: <code>glm-4.7-flash:q4_K_M</code></p>
+<p>Real open-weights (MIT) model from Z.ai (Zhipu AI). 30B-A3B MoE (~30&ndash;31B total, ~3B active), ~200K context (official docs; HF config caps gen at 131K; Ollama lists 198K), hybrid "Preserved Thinking" reasoning. Lightweight sibling of flagship GLM-4.7 (358B MoE). Release date disputed (family Dec 22&ndash;23 2025; Flash-specific Jan 19 2026, unverified). q4_K_M ~18 GB; needs ~20&ndash;24 GB VRAM or runs CPU/RAM (only ~3B active).</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>AIME 2025</td><td>91.6</td><td>HF zai-org/GLM-4.7-Flash card</td></tr>
+<tr><td>GPQA-Diamond</td><td>75.2</td><td>HF zai-org/GLM-4.7-Flash card</td></tr>
+<tr><td>LiveCodeBench v6</td><td>64.0</td><td>HF zai-org/GLM-4.7-Flash card; llm-stats</td></tr>
+<tr><td>HLE (Humanity's Last Exam)</td><td>14.4</td><td>HF zai-org/GLM-4.7-Flash card</td></tr>
+<tr><td>SWE-bench Verified</td><td>59.2</td><td>HF zai-org/GLM-4.7-Flash card</td></tr>
+<tr><td>&tau;&sup2;-Bench (tau-bench)</td><td>79.5</td><td>HF zai-org/GLM-4.7-Flash card</td></tr>
+<tr><td>BrowseComp</td><td>42.8</td><td>HF zai-org/GLM-4.7-Flash card</td></tr>
+<tr><td>Artificial Analysis Intelligence Index (non-reasoning)</td><td>16 (#9/74) provisional estimate (unverified)</td><td>artificialanalysis.ai</td></tr>
+<tr><td>HumanEval Pass@1 (q4_K_M, community, no FP baseline)</td><td>~37.2% (unverified)</td><td>unsloth GGUF discussions #22</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small">Z.ai did NOT publish for Flash: MMLU/MMLU-Pro, AIME 2024, MATH-500, BigCodeBench, HumanEval, Terminal-Bench, BFCL, Arena-Hard, IFEval. Flash absent from LMArena (no Elo), official Aider leaderboard, LiveBench.</p>
+<p>For context, full GLM-4.7 (not Flash): MMLU-Pro 84.3 &middot; GPQA-Diamond 85.7 &middot; AIME 2025 95.7 &middot; LiveCodeBench v6 84.9 &middot; SWE-bench Verified 73.8 &middot; SWE-bench Multilingual 66.7 &middot; Terminal-Bench 2.0 41.0 &middot; &tau;&sup2;-Bench 87.4 &middot; BrowseComp 52.0 &middot; HLE 24.8; AA Index 34 (live)/42 (launch) (unverified); LMArena ~1443 via BenchLM (unverified).</p>
+<p><strong>Quant impact (q4_K_M):</strong> No GLM-specific ppl-vs-FP measurement. MoE consensus: q4_K_M &asymp; +0.05 ppl / ~1&ndash;3% loss; recommended floor for MoE (below it, router quality degrades). Community HumanEval sweep inconclusive.</p>
+<p><strong>Best for:</strong> Local low-VRAM (~18 GB) agentic coding and reasoning with long context &mdash; strongest open model in the ~30B class, accepting a capability gap vs the 358B flagship.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://huggingface.co/zai-org/GLM-4.7-Flash">https://huggingface.co/zai-org/GLM-4.7-Flash</a></li>
+<li><a href="https://huggingface.co/zai-org/GLM-4.7">https://huggingface.co/zai-org/GLM-4.7</a></li>
+<li><a href="https://ollama.com/library/glm-4.7-flash">https://ollama.com/library/glm-4.7-flash</a></li>
+<li><a href="https://docs.z.ai/guides/llm/glm-4.7">https://docs.z.ai/guides/llm/glm-4.7</a></li>
+<li><a href="https://www.zhipuai.cn/en/news/148">https://www.zhipuai.cn/en/news/148</a></li>
+<li><a href="https://www.marktechpost.com/2026/01/20/zhipu-ai-releases-glm-4-7-flash-a-30b-a3b-moe-model-for-efficient-local-coding-and-agents/">https://www.marktechpost.com/2026/01/20/zhipu-ai-releases-glm-4-7-flash-a-30b-a3b-moe-model-for-efficient-local-coding-and-agents/</a></li>
+<li><a href="https://artificialanalysis.ai/models/glm-4-7-flash-non-reasoning">https://artificialanalysis.ai/models/glm-4-7-flash-non-reasoning</a></li>
+<li><a href="https://benchlm.ai/models/glm-4-7">https://benchlm.ai/models/glm-4-7</a></li>
+<li><a href="https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF">https://huggingface.co/unsloth/GLM-4.7-Flash-GGUF</a></li>
+</ul>
+
+<hr>
+
+<h2>GPT-OSS 20B</h2>
+<p class="tag-line">Ollama tag: <code>gpt-oss:20b</code></p>
+<p>OpenAI open-weight (Apache 2.0), released Aug 5 2025. MoE ~20.9B total / ~3.61B active (32 experts, top-4, 24 layers, GQA alternating dense/sparse). Native MXFP4 (MoE weights 4.25 bits; attention/router/embeddings/LM head BF16), runs ~16 GB; Ollama default ~14 GB on disk. 131,072 (128k) context via YaRN. Reasoning-effort low/med/high in system prompt; headline numbers at high. All official evals on the MXFP4 model.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score (low/med/high)</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>MMLU</td><td>80.4 / 84.0 / 85.3</td><td>OpenAI model card, arXiv 2508.10925 Table 3</td></tr>
+<tr><td>MMMLU (multilingual avg)</td><td>67.0 / 73.5 / 75.7</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>GPQA Diamond (no tools)</td><td>56.8 / 66.0 / 71.5</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>GPQA Diamond (with tools)</td><td>58.0 / 67.1 / 74.2</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>AIME 2024 (no tools)</td><td>42.1 / 80.0 / 92.1</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>AIME 2024 (with tools)</td><td>61.2 / 86.0 / 96.0</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>AIME 2025 (no tools)</td><td>37.1 / 72.1 / 91.7</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>AIME 2025 (with tools)</td><td>57.5 / 90.4 / 98.7</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>Humanity's Last Exam (no tools)</td><td>4.2 / 7.0 / 10.9</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>Humanity's Last Exam (with tools)</td><td>6.3 / 8.8 / 17.3</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>SWE-bench Verified</td><td>37.4 / 53.2 / 60.7</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>Tau-Bench Retail</td><td>35.0 / 47.3 / 54.8</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>Tau-Bench Airline</td><td>32.0 / 42.6 / 38.0 (high non-monotonic)</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>Aider Polyglot</td><td>16.6 / 26.6 / 34.2</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>Codeforces Elo (no tools)</td><td>1366 / 1998 / 2230</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>Codeforces Elo (with tools)</td><td>1251 / 2064 / 2516</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>HealthBench</td><td>40.4 / 41.8 / 42.5</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>HealthBench Hard</td><td>9.0 / 12.9 / 10.8 (high non-monotonic)</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>HealthBench Consensus</td><td>84.9 / 83.0 / 82.6</td><td>OpenAI model card Table 3</td></tr>
+<tr><td>MMLU-Pro</td><td>73.6 (effort not stated)</td><td>HF community eval</td></tr>
+<tr><td>GPQA Diamond (community)</td><td>58.59 (medium, no tools)</td><td>HF community eval</td></tr>
+<tr><td>Artificial Analysis Intelligence Index (v4.1)</td><td>15 (high) / 14 (low)</td><td>Artificial Analysis</td></tr>
+<tr><td>AA Index (Aug-2025 v3-era)</td><td>48 (high)</td><td>Artificial Analysis launch article</td></tr>
+<tr><td>MMLU (independent re-test)</td><td>69</td><td>arXiv 2508.12461 Table II</td></tr>
+<tr><td>GSM8K (independent)</td><td>78</td><td>arXiv 2508.12461 Table II</td></tr>
+<tr><td>HumanEval (independent)</td><td>73</td><td>arXiv 2508.12461 Table II</td></tr>
+<tr><td>MedQA / LegalQA / FinQA (independent)</td><td>62 / 65 / 68</td><td>arXiv 2508.12461</td></tr>
+<tr><td>PIQA / SciQ (independent)</td><td>74 / 75</td><td>arXiv 2508.12461</td></tr>
+<tr><td>C-Eval (Chinese, independent)</td><td>45</td><td>arXiv 2508.12461</td></tr>
+<tr><td>LMArena Elo &mdash; Text overall</td><td>1318 (&plusmn;6.4) (unverified)</td><td>BenchLM scrape</td></tr>
+<tr><td>LMArena Elo &mdash; Coding/Math/IF/Creative</td><td>1370/1336/1281/1238 (unverified)</td><td>BenchLM scrape</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Best for:</strong> Local/edge reasoning and agentic/coding on a single ~16 GB GPU, especially at high reasoning effort with tools.</p>
+<p><strong>Caveats:</strong> The model card does NOT report MMLU-Pro, standalone MATH, MBPP, LiveCodeBench, BBH, IFEval. MXFP4: on non-Hopper/Blackwell GPUs weights dequantize to BF16 (~48 GB).</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://arxiv.org/html/2508.10925v1">https://arxiv.org/html/2508.10925v1</a></li>
+<li><a href="https://openai.com/index/gpt-oss-model-card/">https://openai.com/index/gpt-oss-model-card/</a></li>
+<li><a href="https://huggingface.co/openai/gpt-oss-20b">https://huggingface.co/openai/gpt-oss-20b</a></li>
+<li><a href="https://github.com/openai/gpt-oss">https://github.com/openai/gpt-oss</a></li>
+<li><a href="https://ollama.com/library/gpt-oss">https://ollama.com/library/gpt-oss</a></li>
+<li><a href="https://artificialanalysis.ai/models/gpt-oss-20b">https://artificialanalysis.ai/models/gpt-oss-20b</a></li>
+<li><a href="https://arxiv.org/abs/2508.12461">https://arxiv.org/abs/2508.12461</a></li>
+<li><a href="https://benchlm.ai/models/gpt-oss-20b">https://benchlm.ai/models/gpt-oss-20b</a></li>
+</ul>
+
+<hr>
+
+<h2>GPT-OSS 20B (abliterated/uncensored finetune)</h2>
+<p class="tag-line">Ollama tag: <code>gpt-oss-abliterated:20b-q8_0</code></p>
+<p>Uncensored/abliterated build of OpenAI's <code>gpt-oss-20b</code> (same MoE ~20.9B total / ~3.61B active, 24 layers, 128K context, harmony chat format). Lineage: OpenAI <code>gpt-oss-20b</code> &rarr; <code>huihui-ai/Huihui-gpt-oss-20b-BF16-abliterated</code> (refusal-direction abliteration on the BF16 weights, de-censors / removes refusals) &rarr; DavidAU <code>OpenAi-GPT-oss-20b-abliterated-uncensored-NEO-Imatrix-gguf</code> (NEO/CODE Imatrix-calibrated GGUF quants). The installed file is <code>OpenAI-20B-NEOPlus-Uncensored-Q8_0.gguf</code> (NEO/CODE Imatrix, Q8_0, ~20.6 GiB / ~22 GB on disk), imported with the same official harmony template + sampler defaults as <code>gpt-oss:20b</code>.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th><th>Notes</th></tr></thead>
+<tbody>
+<tr><td>Refusal behavior</td><td>De-censored (refusals removed)</td><td>huihui-ai base card / DavidAU card</td><td>finetune-specific (no numeric refusal rate published)</td></tr>
+<tr><td>Capability benchmarks for finetune</td><td>None published</td><td>DavidAU / huihui-ai HF cards</td><td>finetune-specific</td></tr>
+<tr><td>MMLU (low/med/high)</td><td>80.4 / 84.0 / 85.3</td><td>OpenAI model card Table 3</td><td>base <code>gpt-oss-20b</code></td></tr>
+<tr><td>GPQA Diamond (no tools)</td><td>56.8 / 66.0 / 71.5</td><td>OpenAI model card Table 3</td><td>base model</td></tr>
+<tr><td>AIME 2024 (no tools)</td><td>42.1 / 80.0 / 92.1</td><td>OpenAI model card Table 3</td><td>base model</td></tr>
+<tr><td>AIME 2025 (no tools)</td><td>37.1 / 72.1 / 91.7</td><td>OpenAI model card Table 3</td><td>base model</td></tr>
+<tr><td>SWE-bench Verified</td><td>37.4 / 53.2 / 60.7</td><td>OpenAI model card Table 3</td><td>base model</td></tr>
+<tr><td>MMLU-Pro</td><td>73.6 (effort not stated)</td><td>HF community eval</td><td>base model</td></tr>
+<tr><td>AA Intelligence Index (v4.1)</td><td>15 (high) / 14 (low)</td><td>Artificial Analysis</td><td>base model</td></tr>
+<tr><td>LMArena Elo &mdash; Text overall</td><td>1318 (&plusmn;6.4) (unverified)</td><td>BenchLM scrape</td><td>base model</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Abliteration degradation:</strong> Abliteration removes safety refusals by ablating the refusal direction; a comparative study (arXiv 2512.13655) finds it generally degrades benchmarks slightly, with GSM8K-style math reasoning most sensitive. No degradation numbers are published for this specific finetune &mdash; base-model scores above are an upper bound. DavidAU notes the model can be "rough around the edges" from abliteration and recommends conservative sampler settings (see card) for stability.</p>
+<p><strong>Best for:</strong> Uncensored local reasoning, agentic/coding, and unrestricted creative writing wanting near-base gpt-oss-20b quality with refusals removed &mdash; not for verified safety-critical or refusal-dependent work. Runs alongside the stock <code>gpt-oss:20b</code> (keep both; this one trades a few points and refusal behavior for no guardrails, at higher-precision Q8_0).</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://huggingface.co/DavidAU/OpenAi-GPT-oss-20b-abliterated-uncensored-NEO-Imatrix-gguf">https://huggingface.co/DavidAU/OpenAi-GPT-oss-20b-abliterated-uncensored-NEO-Imatrix-gguf</a></li>
+<li><a href="https://huggingface.co/huihui-ai/Huihui-gpt-oss-20b-BF16-abliterated">https://huggingface.co/huihui-ai/Huihui-gpt-oss-20b-BF16-abliterated</a></li>
+<li><a href="https://openai.com/index/gpt-oss-model-card/">https://openai.com/index/gpt-oss-model-card/</a></li>
+<li><a href="https://huggingface.co/openai/gpt-oss-20b">https://huggingface.co/openai/gpt-oss-20b</a></li>
+<li><a href="https://arxiv.org/pdf/2512.13655">https://arxiv.org/pdf/2512.13655</a></li>
+</ul>
+
+<hr>
+
+<h2>Qwen3.6-35B-A3B</h2>
+<p class="tag-line">Ollama tag: <code>qwen3.6:latest</code></p>
+<p>Alibaba Qwen, "Qwen3.6" generation, released Apr 2026. Tag <code>qwen3.6:latest</code> (~24 GB) = <code>qwen3.6:35b</code> = Qwen3.6-35B-A3B MoE (latest/35b/35b-a3b share hash 07d35212591f). ~35B total / ~3B active (256 experts, 8 routed + 1 shared), hybrid 40-layer Gated DeltaNet + Gated Attention with MoE FFNs, natively multimodal (text+image). 262,144 native context, ~1M via YaRN. Hybrid thinking model defaulting to thinking mode; "thinking preservation" across turns. Released Apr 16 2026 (dense 27B followed Apr 22 2026). NOTE: proprietary Qwen3.6-Plus/-Max (1M, ~78.8 SWE-bench) is a different closed model.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>MMLU-Pro</td><td>85.2</td><td>Qwen HF card</td></tr>
+<tr><td>MMLU-Redux</td><td>93.3</td><td>Qwen HF card</td></tr>
+<tr><td>GPQA-Diamond</td><td>86.0</td><td>Qwen HF card</td></tr>
+<tr><td>SuperGPQA</td><td>64.7</td><td>Qwen HF card</td></tr>
+<tr><td>AIME 2026</td><td>92.7</td><td>Qwen HF card</td></tr>
+<tr><td>HMMT Feb 2025</td><td>90.7</td><td>Qwen HF card</td></tr>
+<tr><td>HMMT Nov 2025</td><td>89.1</td><td>Qwen HF card</td></tr>
+<tr><td>HMMT Feb 2026</td><td>83.6</td><td>Qwen HF card</td></tr>
+<tr><td>LiveCodeBench v6</td><td>80.4</td><td>Qwen HF card</td></tr>
+<tr><td>SWE-bench Verified</td><td>73.4</td><td>Qwen HF card / Lushbinary</td></tr>
+<tr><td>SWE-bench Multilingual</td><td>67.2</td><td>Lushbinary</td></tr>
+<tr><td>SWE-bench Pro</td><td>49.5</td><td>Qwen HF card</td></tr>
+<tr><td>Terminal-Bench 2.0</td><td>51.5</td><td>Lushbinary</td></tr>
+<tr><td>Tau3-Bench (tool/agentic)</td><td>67.2</td><td>Qwen HF card (unverified &mdash; possibly TAU3 banking subset)</td></tr>
+<tr><td>MCPMark (agentic)</td><td>37.0</td><td>Lushbinary</td></tr>
+<tr><td>NL2Repo</td><td>29.4</td><td>Lushbinary</td></tr>
+<tr><td>Artificial Analysis Intelligence Index</td><td>32 (#3 in class)</td><td>Artificial Analysis</td></tr>
+<tr><td>AA output speed</td><td>163.2 tok/s</td><td>Artificial Analysis</td></tr>
+<tr><td>27B dense &mdash; MMLU-Pro</td><td>86.2</td><td>InsiderLLM (unverified)</td></tr>
+<tr><td>27B dense &mdash; GPQA-Diamond</td><td>87.8</td><td>InsiderLLM (unverified)</td></tr>
+<tr><td>27B dense &mdash; AIME 2026</td><td>94.1</td><td>InsiderLLM (unverified)</td></tr>
+<tr><td>27B dense &mdash; HMMT Feb 2026</td><td>93.8</td><td>InsiderLLM (unverified)</td></tr>
+<tr><td>27B dense &mdash; LiveCodeBench v6</td><td>83.9</td><td>InsiderLLM (unverified)</td></tr>
+<tr><td>27B dense &mdash; SWE-bench Verified</td><td>77.2</td><td>InsiderLLM (unverified)</td></tr>
+<tr><td>MMLU base / AIME 2024-2025 / MATH-500 / BigCodeBench / HumanEval / BFCL / Arena-Hard v2 / IFEval / Creative Writing / RULER / LMArena Elo</td><td>not published for 35B-A3B</td><td>&mdash;</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small"><em>Notes: AA figures conflict (page says 32; a secondary said 43 &mdash; used 32). 27B-dense numbers from InsiderLLM only, unverified.</em></p>
+<p><strong>Best for:</strong> Local agentic coding and repo-level/frontend dev plus strong math reasoning at ~3B-active speed in ~24 GB &mdash; punches above active-param size; general-chat leaderboards largely unmeasured.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://ollama.com/library/qwen3.6">https://ollama.com/library/qwen3.6</a></li>
+<li><a href="https://huggingface.co/Qwen/Qwen3.6-35B-A3B">https://huggingface.co/Qwen/Qwen3.6-35B-A3B</a></li>
+<li><a href="https://github.com/QwenLM/Qwen3.6">https://github.com/QwenLM/Qwen3.6</a></li>
+<li><a href="https://artificialanalysis.ai/models/qwen3-6-35b-a3b">https://artificialanalysis.ai/models/qwen3-6-35b-a3b</a></li>
+<li><a href="https://lushbinary.com/blog/qwen-3-6-developer-guide-benchmarks-architecture-api-self-hosting/">https://lushbinary.com/blog/qwen-3-6-developer-guide-benchmarks-architecture-api-self-hosting/</a></li>
+<li><a href="https://insiderllm.com/guides/qwen-3-6-local-ai-guide/">https://insiderllm.com/guides/qwen-3-6-local-ai-guide/</a></li>
+<li><a href="https://www.labellerr.com/blog/qwen3-6-35b-a3b-open-source-ai-model/">https://www.labellerr.com/blog/qwen3-6-35b-a3b-open-source-ai-model/</a></li>
+</ul>
+
+<hr>
+
+<h2>Gemma 4 E4B</h2>
+<p class="tag-line">Ollama tag: <code>gemma4:latest</code></p>
+<p>Google DeepMind open-weight (Apache 2.0) family, released Apr 2 2026. Natively multimodal (text+image+video; edge sizes add audio; output text only). Sizes: E2B (~2.3B eff), E4B (~4.5B eff, ~8B w/ embeddings), 12B Unified (dense), 26B-A4B (MoE 25.2B/3.8B), 31B Dense (30.7B). Hybrid local-sliding-window + global attention. Context 128K (edge) up to 256K (12B/26B/31B). Ollama <code>gemma4:latest</code> (9.6 GB) = <code>gemma4:e4b</code> (E4B, ~4.5B eff, 128K, vision+audio). Scores below = E4B unless noted.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>MMLU-Pro</td><td>69.4%</td><td>Google model card / HF blog</td></tr>
+<tr><td>GPQA Diamond</td><td>58.6%</td><td>Google model card / HF blog</td></tr>
+<tr><td>AIME 2026 (no tools)</td><td>42.5%</td><td>Google model card / HF blog</td></tr>
+<tr><td>LiveCodeBench v6</td><td>52.0%</td><td>Google model card / HF blog</td></tr>
+<tr><td>Multilingual (Global MMLU / MMMLU)</td><td>76.6%</td><td>Google model card</td></tr>
+<tr><td>MMMU Pro (vision)</td><td>52.6%</td><td>Google model card / HF blog</td></tr>
+<tr><td>MATH-Vision (vision)</td><td>59.5%</td><td>Google model card</td></tr>
+<tr><td>MRCR v2 (8-needle, 128K)</td><td>25.4%</td><td>HF blog</td></tr>
+<tr><td>Artificial Analysis Intelligence Index</td><td>~12 (estimated)</td><td>Artificial Analysis</td></tr>
+<tr><td>GSM8K</td><td>~85% (unverified &mdash; likely family/larger size)</td><td>gemma4.wiki secondary</td></tr>
+<tr><td>HumanEval</td><td>~85% (unverified &mdash; likely family/larger size)</td><td>gemmai4 secondary</td></tr>
+<tr><td>IFEval / MBPP / BBH / DocVQA</td><td>not published for E4B (unverified)</td><td>&mdash;</td></tr>
+<tr><td>LMArena/Chatbot Arena Elo</td><td>not published for E4B; Arena ranks 31B #3 (~1452) &amp; 26B #6 (unverified)</td><td>Google blog / LMArena</td></tr>
+</tbody>
+</table>
+</div>
+<p>For reference, the 31B flagship (Google card): MMLU-Pro 85.2%, GPQA Diamond 84.3%, AIME 2026 89.2%, LiveCodeBench v6 80.0%, MMMU Pro 76.9%, multilingual 88.4%.</p>
+<p><strong>Best for:</strong> On-device/single-GPU multimodal (text+image+audio) at ~9.6 GB where E4B punches above ~4.5B-effective weight; step up to 26B/31B for top reasoning/coding.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://blog.google/innovation-and-ai/technology/developers-tools/gemma-4/">https://blog.google/innovation-and-ai/technology/developers-tools/gemma-4/</a></li>
+<li><a href="https://ai.google.dev/gemma/docs/core/model_card_4">https://ai.google.dev/gemma/docs/core/model_card_4</a></li>
+<li><a href="https://huggingface.co/blog/gemma4">https://huggingface.co/blog/gemma4</a></li>
+<li><a href="https://ollama.com/library/gemma4/tags">https://ollama.com/library/gemma4/tags</a></li>
+<li><a href="https://artificialanalysis.ai/models/gemma-4-e4b">https://artificialanalysis.ai/models/gemma-4-e4b</a></li>
+</ul>
+
+<hr>
+
+<h2>DeepSeek-R1-Distill-Qwen-32B</h2>
+<p class="tag-line">Ollama tag: <code>deepseek-r1:32b</code></p>
+<p>Dense reasoning model from DeepSeek = Qwen2.5-32B fine-tuned on ~800k R1 reasoning samples. ~32.8B params (33B BF16), 131,072 (128K) context, recommended max gen 32,768, released Jan 22 2025 (arXiv 2501.12948). Ollama <code>deepseek-r1:32b</code> = this model, default Q4_K_M (~20 GB). Official card reports only a small subset for distilled models.</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>AIME 2024 (pass@1)</td><td>72.6</td><td>DeepSeek model card / R1 paper</td></tr>
+<tr><td>AIME 2024 (cons@64)</td><td>83.3</td><td>DeepSeek model card / R1 paper</td></tr>
+<tr><td>AIME 2025</td><td>not officially published (unverified)</td><td>&mdash;</td></tr>
+<tr><td>MATH-500 (pass@1)</td><td>94.3</td><td>DeepSeek model card / R1 paper</td></tr>
+<tr><td>GPQA-Diamond (pass@1)</td><td>62.1</td><td>DeepSeek model card / R1 paper</td></tr>
+<tr><td>LiveCodeBench (pass@1)</td><td>57.2</td><td>DeepSeek model card / R1 paper</td></tr>
+<tr><td>Codeforces (rating)</td><td>1691</td><td>DeepSeek model card / R1 paper</td></tr>
+<tr><td>Codeforces (percentile)</td><td>~90th (unverified)</td><td>DeepSeek R1 paper</td></tr>
+<tr><td>MMLU</td><td>~73.9 (third-party) (unverified)</td><td>llm-stats.com</td></tr>
+<tr><td>MMLU-Redux</td><td>88.2 (unverified)</td><td>aggregator</td></tr>
+<tr><td>MMLU-Pro</td><td>estimated low (unverified)</td><td>Artificial Analysis</td></tr>
+<tr><td>GSM8K / HumanEval / BBH</td><td>not officially published for distill (unverified)</td><td>&mdash;</td></tr>
+<tr><td>IFEval (strict prompt)</td><td>72.5 (unverified; conflicting 83.9 seen)</td><td>aggregators</td></tr>
+<tr><td>Arena-Hard</td><td>60.8 (unverified)</td><td>aggregator</td></tr>
+<tr><td>LiveBench (2024-11-25)</td><td>72.0 (unverified)</td><td>aggregator</td></tr>
+<tr><td>Artificial Analysis Intelligence Index</td><td>11 (earlier "17" cited) (unverified)</td><td>Artificial Analysis</td></tr>
+<tr><td>LMArena (Chatbot Arena) Elo</td><td>not officially listed (unverified)</td><td>&mdash;</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>Quant impact (Q4_K_M, Ollama default):</strong> Essentially lossless. Study arXiv 2505.02390: Q4_K_M vs BF16 &mdash; MATH-500 93.90 vs 93.65, GPQA 62.00 vs 61.85, AIME 2024 70.40 vs 69.59 (no meaningful degradation).</p>
+<p><strong>Best for:</strong> Local math, science (GPQA), competitive-coding reasoning where a single 24 GB GPU runs a strong o1-mini-class dense model at Q4 with negligible loss.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B">https://huggingface.co/deepseek-ai/DeepSeek-R1-Distill-Qwen-32B</a></li>
+<li><a href="https://arxiv.org/html/2501.12948v1">https://arxiv.org/html/2501.12948v1</a></li>
+<li><a href="https://ollama.com/library/deepseek-r1:32b">https://ollama.com/library/deepseek-r1:32b</a></li>
+<li><a href="https://artificialanalysis.ai/models/deepseek-r1-distill-qwen-32b">https://artificialanalysis.ai/models/deepseek-r1-distill-qwen-32b</a></li>
+<li><a href="https://arxiv.org/html/2505.02390v1">https://arxiv.org/html/2505.02390v1</a></li>
+<li><a href="https://llm-stats.com/models/deepseek-r1-distill-qwen-32b">https://llm-stats.com/models/deepseek-r1-distill-qwen-32b</a></li>
+</ul>
+
+<hr>
+
+<h2>Qwen3-Coder-30B-A3B</h2>
+<p class="tag-line">Ollama tag: <code>qwen3-coder:30b</code></p>
+<p>Open-weight agentic coding model, Qwen Team (Alibaba), released Jul 31 2025. MoE 30.5B total / 3.3B active (128 experts, 8 active, 48 layers, GQA 32Q/4KV). Native 262,144 (256K) context, 1M via YaRN. Instruct-only, non-thinking, tuned for agentic coding, repo-scale understanding, tool/function calling. Qwen did NOT publish a full official table for this variant (GitHub issue #469).</p>
+<div class="table-scroll">
+<table>
+<thead><tr><th>Benchmark</th><th>Score</th><th>Source</th></tr></thead>
+<tbody>
+<tr><td>SWE-bench Verified</td><td>51.6 (OpenHands, 100 turns)</td><td>Qwen-reported, HF discussion #30</td></tr>
+<tr><td>Artificial Analysis Intelligence Index (v4.1)</td><td>14</td><td>Artificial Analysis</td></tr>
+<tr><td>Aider Polyglot</td><td>~62% (480B variant &mdash; NOT this 30B) (unverified)</td><td>Unsloth / Qwen blog</td></tr>
+<tr><td>SWE-bench Multilingual</td><td>67.2 (likely Qwen3-Coder-Next, not this) (unverified)</td><td>search aggregation</td></tr>
+<tr><td>Terminal-Bench 2.0</td><td>51.5 (likely different/newer Qwen Coder) (unverified)</td><td>search aggregation</td></tr>
+<tr><td>BFCL (tool use)</td><td>76.63 (unverified; possibly conflated)</td><td>search aggregation</td></tr>
+<tr><td>LiveCodeBench / HumanEval / MBPP / BigCodeBench / Spider / MMLU-Pro / GPQA / AIME / Arena-Hard / LMArena Elo</td><td>No model-specific published score found</td><td>&mdash;</td></tr>
+</tbody>
+</table>
+</div>
+<p class="small">Caveat: numbers often attributed to "Qwen3 30B A3B" online (Arena-Hard 91.0, AIME 2024 80.4, LiveBench 74.3) belong to the general-purpose Qwen3-30B-A3B, a DIFFERENT model &mdash; do not attribute to the coder.</p>
+<p><strong>Quant impact (q4):</strong> No model-specific study. Q4_K_M (~17.7 GB) retains quality well; Unsloth UD-Q4_K_XL nearly matched bf16 on Aider for the 480B (60.9 vs 61.8). (Unverified for the 30B.)</p>
+<p><strong>Best for:</strong> Local agentic coding and tool-use needing long-context (256K&ndash;1M) repo understanding at low active-param (3B) inference cost.</p>
+<p class="small"><strong>Sources:</strong></p>
+<ul class="sources">
+<li><a href="https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct">https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct</a></li>
+<li><a href="https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct/discussions/30">https://huggingface.co/Qwen/Qwen3-Coder-30B-A3B-Instruct/discussions/30</a></li>
+<li><a href="https://github.com/QwenLM/Qwen3-Coder">https://github.com/QwenLM/Qwen3-Coder</a></li>
+<li><a href="https://github.com/QwenLM/Qwen3-Coder/issues/469">https://github.com/QwenLM/Qwen3-Coder/issues/469</a></li>
+<li><a href="https://artificialanalysis.ai/models/qwen3-coder-30b-a3b-instruct">https://artificialanalysis.ai/models/qwen3-coder-30b-a3b-instruct</a></li>
+<li><a href="https://unsloth.ai/docs/models/tutorials/qwen3-coder-how-to-run-locally">https://unsloth.ai/docs/models/tutorials/qwen3-coder-how-to-run-locally</a></li>
+</ul>
+
+<hr>
+
+<h2>Methodology &amp; caveats</h2>
+<p><strong>How the data was gathered.</strong> Each of the 13 models was researched independently (parallel per-model web research), drawing first on official sources &mdash; model cards, technical reports, and papers (e.g. Hugging Face cards, OpenAI/Google/Qwen/Z.ai cards, arXiv) &mdash; and then on reputable third-party leaderboards (Artificial Analysis, LMArena / Chatbot Arena, llm-stats, BenchLM, and others). Where a primary source reports a benchmark directly, it is cited as the source; aggregator-only or search-derived figures are flagged.</p>
+<p><strong>Meaning of "(unverified)" / "(unv.)".</strong> These flags mark any number that could not be confirmed against a primary source &mdash; typically figures from aggregators, secondary blogs, search snippets, or community evals, or values that may have been conflated with a different model size/variant. Treat them as indicative only. Several "Best for" notes and contextual figures (e.g. flagship-model reference numbers, 27B-dense Qwen3.6 figures) are included for orientation but are explicitly not the installed model's verified scores.</p>
+<p><strong>Quant level affects real-world quality.</strong> Every published score in this document reflects full-precision (BF16/FP8/MXFP4-native) weights. The user runs quantized GGUFs, shown by the suffix in each Ollama tag. As a rule of thumb: q8_0 and q5/q4_K_M lose little (often within ~1&ndash;3% of full precision, sometimes near-lossless for dense reasoning models at Q4_K_M), while an aggressive ~2-bit quant such as the Q2_K used for GLM-4.5-Air can lose meaningfully. Hard math, coding, and long-context tasks degrade first. Real-world output quality on the user's machine will therefore generally sit somewhat below the published numbers in the tables above.</p>
+<p><strong>Apples-to-apples limits.</strong> Benchmark suites evolve. Some 2026 models report AIME 2026, HMMT 2025/2026, LiveCodeBench v6, or SWE-bench Pro instead of (or alongside) the older AIME 2024/2025, MATH-500, and original SWE-bench Verified. The master comparison table notes the AIME year per cell and footnotes scaffold/effort/tool variations, but cross-generation comparisons should be made with care.</p>
+
+</div>
+</body>
+</html>

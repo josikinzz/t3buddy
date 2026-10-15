@@ -1,0 +1,17 @@
+# SwiftPM build output (scripts/deployment.sh uses .build-20261013)
+.build/
+.build-*/
+.swiftpm/
+*.xcodeproj/
+xcuserdata/
+
+# Packaged app, generated LaunchAgent plist and screenshots (written by scripts/)
+outputs/
+
+# Local planning notes and design-tool caches
+.scratch/
+.impeccable/
+
+# macOS and editor leftovers
+.DS_Store
+*.bak-*
