@@ -1,3 +1,5 @@
+<img src="Resources/favicon.svg" alt="" width="64" height="64">
+
 # t3buddy
 
 <p align="center"><img src="docs/t3boii.png" alt="T3boii, the desk pet, with his agents orbiting him as glowing orbs" width="520"></p>
