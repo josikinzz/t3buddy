@@ -146,6 +146,13 @@ final class PetLayer: NSObject, WKNavigationDelegate {
         callPage("window.t3boii.demo?.(\(payloadJSON ?? "null"))")
     }
 
+    /// Fakes a rate limit for `provider` (nil: the page picks one) on the real orbit: T3boii cries
+    /// and that provider's orbs dissolve (`window.t3boii.debug.limit`).
+    func startLimitDemo(provider: String?) {
+        let argument = provider.flatMap { try? JSONEncoder().encode($0) }.map { String(decoding: $0, as: UTF8.self) } ?? ""
+        callPage("window.t3boii.debug?.limit?.(\(argument))")
+    }
+
     /// macOS Reduce Motion: the page swaps flights for fades and slows the orbit and idle motion.
     private static var reduceMotion: Bool { NSWorkspace.shared.accessibilityDisplayShouldReduceMotion }
 

@@ -1,4 +1,4 @@
-// T3boii's demo: a scripted show of his animations, about 43 seconds long, for screen recordings.
+// T3boii's demo: a scripted show of his animations, about 44 seconds long, for screen recordings.
 //
 // window.t3boii.demo(payload) starts it (again from the top if it is already running);
 // demo(false) stops it. `payload.projects` is the owner's real projects, [{ title, icon }] with
@@ -14,10 +14,16 @@
 // The arc: asleep (Zs, drool, a drip) -> woken with a start and a stretch -> threads glow out of
 // his forehead, a few, then more, with subagents and activity trails; now and then one is
 // swallowed -> one waits on you (held out, amber) -> one fails (flinch, cracked red orb, frown)
-// and is retried -> 20+ at once: eyes white, light pouring from his mouth -> swallowed back in
-// waves -> his all-done dance.
+// and is retried -> 20+ at once: eyes white, light pouring from his mouth -> Codex hits its usage
+// limit: he cries, and its threads die, dissolving under its logo -> the limit clears ->
+// swallowed back in waves -> his all-done dance.
+//
+// limitShow(provider) (window.t3boii.debug.limit, scripts/demo.sh limit) is the limit beat alone,
+// on the real orbit: that provider's orbs dissolve and he cries; LIMIT_SHOW_S later the real orbit
+// is handed back, and its threads come out again as they are.
 
-const END_S = 43;               // the whole show; real snapshots come back here
+const END_S = 44;               // the whole show; real snapshots come back here
+const LIMIT_SHOW_S = 9;         // limitShow: the made-up limit lasts this long
 const ACTIVITY_EVERY_S = 2.3;   // how often a working thread moves on to something new
 
 const GENERIC_ACTIVITY = [
@@ -30,6 +36,7 @@ const OWN_ACTIVITY = { widgets: ['reading pet.js', 'running swift build', 'think
 const GROK_FACE = { kind: 'image', src: './badges/grokBot.png' };
 
 let run = null;
+let show = null;                // limitShow, while it runs
 
 /// True while the demo plays (his animation sounds play then, mouse or not, for recordings).
 export function demoPlaying() { return run !== null; }
@@ -39,6 +46,7 @@ export function demo(payload) {
   const T = window.t3boii;
   if (payload === false) { stop(); return false; }
   if (!T?.ready || !T.orbit) return false;
+  endShow();
   // Restarted mid-show: the real orbit is still the one from before the first start.
   const real = run ? (run.stash !== undefined ? run.stash : run.real) : T.lastSnapshot;
   if (run) stop({ restore: false });
@@ -57,6 +65,7 @@ function start(T, payload, real) {
     saved: { update: T.update, pointer: T.pointer, hover: T.hover, droolAfter: T.debug.droolAfter, calm: T.debug.calm },
     real,                         // the real orbit when it started (the demo's own updates replace lastSnapshot)
     threads: new Map(),           // id -> orb data, in arrival order
+    limits: [],                   // providers at a limit in the show
     projects,
     grok: payload.grok || GROK_FACE,
     activityAt: 0,
@@ -185,7 +194,65 @@ function moveOn() {
 function push() {
   const at = Date.now() / 1000;
   const orbs = [...run.threads.values()].map(({ n, title, ...orb }) => ({ ...orb, activeAt: at }));
-  run.saved.update.call(run.T, { orbs });
+  run.saved.update.call(run.T, { orbs, limits: run.limits });
+}
+
+/// `provider` hits its limit: he cries, and these threads (with their subagents) die of it.
+function limit(provider, ...ids) {
+  const hit = new Set(ids.map((id) => `demo:${id}`));
+  for (const t of run.threads.values()) {
+    if (hit.has(t.id) || hit.has(t.parentId)) { t.limited = true; t.limitProvider = provider; t.state = 'failed'; }
+  }
+  run.limits = [{ provider, since: Math.round(Date.now()) / 1000 }];
+  push();
+}
+
+/// The limit clears; the threads it killed are long gone.
+function unlimit() {
+  for (const [id, t] of run.threads) if (t.limited) run.threads.delete(id);
+  run.limits = [];
+  push();
+}
+
+// ------------------------------------------------------------ limitShow
+
+/// A made-up rate limit for `provider` on the real orbit (default: the provider with the most
+/// orbs, else Codex): its threads and their subagents dissolve and he cries. Real snapshots are
+/// kept aside meanwhile; then the latest is handed back. Not during the demo.
+export function limitShow(provider) {
+  const T = window.t3boii;
+  if (!T?.ready || !T.orbit || run) return null;
+  const real = show ? (show.stash !== undefined ? show.stash : show.real) : (T.lastSnapshot || { orbs: [] });
+  endShow({ restore: false });
+  const orbs = Array.isArray(real?.orbs) ? real.orbs : [];
+  if (typeof provider !== 'string' || !provider) {
+    const counts = new Map();
+    for (const o of orbs) if (!o.parentId) counts.set(o.provider, (counts.get(o.provider) || 0) + 1);
+    provider = [...counts].sort((a, b) => b[1] - a[1])[0]?.[0] || 'codex';
+  }
+  const hit = new Set(orbs.filter((o) => o.provider === provider && !o.parentId).map((o) => o.id));
+  const marked = orbs.map((o) => (hit.has(o.id) || hit.has(o.parentId) || (o.parentId && o.provider === provider) ? { ...o, limited: true, limitProvider: provider } : o));
+  const limits = [...(Array.isArray(real?.limits) ? real.limits : []), { provider, since: Math.round(Date.now()) / 1000 }];
+  show = { T, real, stash: undefined, update: T.update, t0: performance.now(), raf: 0 };
+  T.update = (snapshot) => { show.stash = snapshot; return null; };
+  show.update.call(T, { orbs: marked, limits });
+  const tick = () => {
+    if (!show) return;
+    if (performance.now() - show.t0 >= LIMIT_SHOW_S * 1000) { endShow(); return; }
+    show.raf = requestAnimationFrame(tick);
+  };
+  show.raf = requestAnimationFrame(tick);
+  return provider;
+}
+
+/// Ends limitShow, handing back the latest real snapshot unless `restore` is false.
+function endShow({ restore = true } = {}) {
+  if (!show) return;
+  const { T, update, stash, real } = show;
+  cancelAnimationFrame(show.raf);
+  T.update = update;
+  show = null;
+  if (restore) T.update(stash !== undefined ? stash : real || { orbs: [] });
 }
 
 /// Every main thread and satellite id currently in the show.
@@ -223,8 +290,13 @@ const BEATS = [
   [24.6, () => add(sub('h1', 'h', 'claudeAgent'), thread('o', 3, 'codex', 13))],
   [25.3, () => drop('i')],
   [26.0, () => add(thread('p', 5, 'claudeAgent', 2), sub('d1', 'd', 'opencode'))],
-  // Swallowed back in waves until the last is gone, then his all-done dance (~38 s to ~42 s).
-  [29.0, () => drop('a', 'g', 'k', 'm', 'o')],
-  [31.6, () => drop('d', 'f', 'j', 'l', 'p')],
-  [34.1, () => drop(...mainIds())],
+  // Codex hits its usage limit: he bursts into tears, and three of its threads (one with its
+  // subagent) and another's Codex subagent die, darkening under the Codex logo and crumbling away;
+  // under 20 again, the light in his mouth goes out. Then it clears.
+  [27.2, () => limit('codex', 'k', 'o', 'h', 'n2')],
+  [31.4, () => unlimit()],
+  // Swallowed back in waves until the last is gone, then his all-done dance (~39 s to ~43 s).
+  [31.6, () => drop('a', 'g', 'm')],
+  [33.4, () => drop('d', 'f', 'j', 'l', 'p')],
+  [35.2, () => drop(...mainIds())],
 ];

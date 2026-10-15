@@ -8,6 +8,8 @@
 //   heaven    god rays and a warm glare pouring out of his mouth at full power
 //   rings     glowing tori that roll off the T3 on his forehead when an agent spawns
 //   stars     a dizzy halo of little stars after he has been spun round
+//   shards    dark glossy chips an orb crumbles into when its provider hits a limit
+//   tears     glassy drops that well at his lower lids, run down his cheeks and drip off
 //
 // Positions are world units (his model metres); `pageToWorld` maps page CSS px onto a plane
 // in front of him for effects that start where the mouse is.
@@ -61,6 +63,8 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
     z: puffy(zShape(), 0.14, 0.07),
     star: puffy(starShape(), 0.12, 0.06),
     drop: new THREE.SphereGeometry(0.5, 20, 16),
+    // Chips of a crumbling orb: faceted, so each catches the light on a few flat sides.
+    shards: [new THREE.IcosahedronGeometry(0.5, 0), new THREE.TetrahedronGeometry(0.62, 0), new THREE.OctahedronGeometry(0.52, 0)],
   };
 
   const gloss = (color, emissive, extra = {}) => new THREE.MeshPhysicalMaterial({
@@ -72,6 +76,11 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
     z: gloss(0xd9cbff, 0x3a2878, { emissiveIntensity: 0.35 }),
     star: gloss(0xffd45e, 0x8a5200, { emissiveIntensity: 0.6 }),
     drop: gloss(0xd8eeff, 0x26405e, { roughness: 0.06, clearcoatRoughness: 0.02, opacity: 0.8, emissiveIntensity: 0.25, sheen: 0 }),
+    // Near-black glass with a faint violet glow in it, and a few chips still lit like embers.
+    shard: gloss(0x231b31, 0x1c0d3a, { emissiveIntensity: 0.7, roughness: 0.2, clearcoatRoughness: 0.08, flatShading: true, sheen: 0.25 }),
+    ember: gloss(0xd7c2ff, 0x8a55ff, { emissiveIntensity: 1.7, roughness: 0.3, flatShading: true, sheen: 0 }),
+    // A tear: clearer and brighter than drool, it has to read on his pale skin.
+    tear: gloss(0xeaf6ff, 0x3a6aa0, { roughness: 0.03, clearcoatRoughness: 0.02, opacity: 0.88, emissiveIntensity: 0.32, sheen: 0, depthWrite: false }),
   };
 
   // -------------------------------------------------------- floaters
@@ -81,10 +90,13 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
   scene.add(group);
 
   function spawn(kind, at, extra = {}) {
-    const mesh = new THREE.Mesh(geometry[kind === 'drip' ? 'drop' : kind], materials[kind === 'drip' ? 'drop' : kind].clone());
+    const shape = kind === 'drip' ? geometry.drop : kind === 'shard' ? geometry.shards[Math.floor(Math.random() * geometry.shards.length)] : geometry[kind];
+    const material = (kind === 'drip' ? (extra.tear ? materials.tear : materials.drop) : kind === 'shard' ? (extra.ember ? materials.ember : materials.shard) : materials[kind]).clone();
+    const mesh = new THREE.Mesh(shape, material);
     mesh.renderOrder = 5;
     group.add(mesh);
-    const f = { kind, mesh, at: at.clone(), t0: null, life: { heart: 1.6, z: 3, drip: 0.9, star: 0 }[kind], sway: rand(-1, 1), size: extra.size ?? 1, spin: rand(-1, 1) };
+    const f = { kind, mesh, at: at.clone(), t0: null, delay: extra.delay ?? 0, life: extra.life ?? { heart: 1.6, z: 3, drip: 0.9, star: 0, shard: 1.5 }[kind], sway: rand(-1, 1), size: extra.size ?? 1, spin: rand(-1, 1), ...extra };
+    if (f.delay > 0) mesh.visible = false;
     floaters.push(f);
     return f;
   }
@@ -93,7 +105,8 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
     for (let i = floaters.length - 1; i >= 0; i -= 1) {
       const f = floaters[i];
       if (f.kind === 'star') continue;
-      if (f.t0 === null) f.t0 = t;
+      if (f.t0 === null) f.t0 = t + f.delay;
+      if (t < f.t0) continue;
       const u = (t - f.t0) / f.life;
       if (u >= 1) { group.remove(f.mesh); f.mesh.material.dispose(); floaters.splice(i, 1); continue; }
       const m = f.mesh;
@@ -113,13 +126,22 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
         m.scale.setScalar(unit(46) * f.size * (0.45 + 0.75 * u));
         m.rotation.set(0.2 * Math.sin(u * 3), 0.7 * Math.sin(u * 4 + f.sway), -0.22 + Math.sin(u * 4 + f.sway) * 0.18);
         opacity = smooth(0, 0.15, u) * (1 - smooth(0.6, 1, u));
+      } else if (f.kind === 'shard') {
+        // A chip breaks off the orb, flies out a little, tumbles and falls, shrinking away; an ember
+        // chip floats up instead, glowing out.
+        const age = t - f.t0;
+        const fall = f.ember ? -0.35 : 1.25;
+        m.position.set(f.at.x + f.v.x * age, f.at.y + f.v.y * age - 0.5 * fall * age * age, f.at.z + f.v.z * age);
+        m.scale.setScalar(f.scale * (1 - 0.65 * smooth(0.35, 1, u)));
+        m.rotation.set(f.spin * 7 * age, f.sway * 5 * age, (f.spin + f.sway) * 3 * age);
+        opacity = smooth(0, 0.06, u) * (1 - smooth(0.55, 1, u));
       } else {
         // A drop falls away under gravity, stretching as it goes.
         const age = t - f.t0;
         m.position.set(f.at.x, f.at.y - 0.5 * 9 * age * age, f.at.z);
-        const s = unit(11);
+        const s = unit(f.tear ? 12 : 11);
         m.scale.set(s * (1 - 0.15 * u), s * (1.25 + 0.6 * u), s);
-        opacity = 0.8 * (1 - smooth(0.45, 1, u));
+        opacity = (f.tear ? 0.88 : 0.8) * (1 - smooth(0.45, 1, u));
       }
       m.material.opacity = opacity;
       m.visible = opacity > 0.01;
@@ -356,6 +378,100 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
     }
   }
 
+  // ------------------------------------------------------------ shards
+
+  /// An orb crumbling away: `count` chips break off a ball of `radius` (world units) round `at`
+  /// over `duration` s from `delay` s on, mostly from the side facing the viewer. `size` scales them.
+  function crumble(at, radius, { delay = 0, duration = 1.4, count = 34, size = 1 } = {}) {
+    for (let i = 0; i < count; i += 1) {
+      const dir = new THREE.Vector3(rand(-1, 1), rand(-1, 1), rand(-0.3, 1)).normalize();
+      const ember = Math.random() < 0.22;
+      spawn('shard', at.clone().addScaledVector(dir, radius * rand(0.45, 1)), {
+        delay: delay + duration * Math.pow(Math.random(), 0.85),
+        life: ember ? rand(1.1, 1.7) : rand(1.0, 1.6),
+        ember,
+        scale: unit(ember ? rand(3, 5.5) : rand(5.5, 12)) * size,
+        v: dir.clone().multiplyScalar(rand(0.08, 0.3)).add(new THREE.Vector3(0, rand(0.02, ember ? 0.3 : 0.14), 0)),
+      });
+    }
+  }
+
+  // ------------------------------------------------------------ tears
+
+  // A tear wells up as a bead at his lower lid, then runs down his cheek along `path` (world
+  // points down his skin, as it was when the tear began) leaving a wet glassy streak, and drips
+  // off the end. `follow()` gives the matrix carrying that moment's pose to this frame's, so the
+  // tear rides his face as his head bobs and droops. Still (reduced motion), it only wells and fades.
+  const tears = [];
+  const WELL_S = 0.75, RUN_S = 1.15, STREAK_FADE_S = 1.4, TEAR_TUBE = 28, TEAR_RADIAL = 6;
+  function tear(path, follow, { size = 1, still = false } = {}) {
+    const curve = new THREE.CatmullRomCurve3(path);
+    const holder = new THREE.Group();
+    holder.matrixAutoUpdate = false;
+    const drop = new THREE.Mesh(geometry.drop, materials.tear.clone());
+    const streak = new THREE.Mesh(new THREE.TubeGeometry(curve, TEAR_TUBE, unit(2.6) * size, TEAR_RADIAL, false), materials.tear.clone());
+    streak.geometry.setDrawRange(0, 0);
+    drop.renderOrder = 7; streak.renderOrder = 6;
+    holder.add(streak, drop);
+    scene.add(holder);
+    tears.push({ curve, follow, holder, drop, streak, size, still, t0: null, fell: false });
+  }
+
+  const tearTangent = new THREE.Vector3(), tearDown = new THREE.Vector3(0, -1, 0);
+  function stepTears(t) {
+    for (let i = tears.length - 1; i >= 0; i -= 1) {
+      const tr = tears[i];
+      if (tr.t0 === null) tr.t0 = t;
+      const age = t - tr.t0;
+      tr.holder.matrix.copy(tr.follow());
+      tr.holder.matrixWorldNeedsUpdate = true;
+      const bead = unit(14) * tr.size;
+      if (tr.still) {
+        // Reduced motion: a bead wells at his lid and fades, no running.
+        const u = age / 3;
+        if (u >= 1) { disposeTear(tr); tears.splice(i, 1); continue; }
+        tr.drop.position.copy(tr.curve.getPointAt(0));
+        tr.drop.scale.setScalar(bead * smooth(0, 0.25, u));
+        tr.drop.material.opacity = 0.88 * (1 - smooth(0.7, 1, u));
+        continue;
+      }
+      if (age < WELL_S) {
+        // Welling: the bead swells at his lid, trembling as it fills.
+        const w = smooth(0, WELL_S, age);
+        tr.drop.position.copy(tr.curve.getPointAt(0));
+        tr.drop.scale.set(bead * w * (1 + 0.06 * Math.sin(age * 31)), bead * w * (1.05 + 0.1 * w), bead * w);
+        tr.drop.quaternion.identity();
+      } else if (age < WELL_S + RUN_S) {
+        // Running: it lets go and slides down his cheek, gathering speed, stretched along the way.
+        const u = Math.pow((age - WELL_S) / RUN_S, 1.55);
+        tr.drop.position.copy(tr.curve.getPointAt(u));
+        tr.curve.getTangentAt(Math.min(0.999, u), tearTangent);
+        tr.drop.quaternion.setFromUnitVectors(tearDown, tearTangent);
+        tr.drop.scale.set(bead * 0.92, bead * (1.15 + 0.35 * Math.sin(Math.PI * u)), bead * 0.92);
+        tr.streak.geometry.setDrawRange(0, TEAR_RADIAL * 6 * Math.floor(u * TEAR_TUBE));
+      } else if (!tr.fell) {
+        // Off the end of his cheek it drips, falling free in the world.
+        tr.fell = true;
+        tr.drop.visible = false;
+        tr.streak.geometry.setDrawRange(0, Infinity);
+        tr.holder.updateMatrixWorld(true);
+        const end = tr.curve.getPointAt(1).applyMatrix4(tr.holder.matrixWorld);
+        spawn('drip', end, { tear: true });
+      }
+      // The wet streak dries off after the drop has passed.
+      const dry = smooth(WELL_S + RUN_S * 0.6, WELL_S + RUN_S + STREAK_FADE_S, age);
+      tr.streak.material.opacity = 0.62 * (1 - dry);
+      if (dry >= 1) { disposeTear(tr); tears.splice(i, 1); }
+    }
+  }
+
+  function disposeTear(tr) {
+    scene.remove(tr.holder);
+    tr.streak.geometry.dispose();
+    tr.streak.material.dispose();
+    tr.drop.material.dispose();
+  }
+
   // ------------------------------------------------------------ stars
 
   const stars = Array.from({ length: 4 }, () => {
@@ -384,6 +500,8 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
     heart(page, size = 1) { const at = pageToWorld(page.x, page.y); if (at) spawn('heart', at, { size }); },
     z(at, size) { spawn('z', at, { size }); },
     drip(at) { spawn('drip', at); },
+    crumble,
+    tear,
     ring,
     dizzyStars,
     setDrool,
@@ -391,10 +509,12 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
     setRadiance,
     step(t, dt, { head }) {
       stepFloaters(t);
+      stepTears(t);
       stepRings(t);
       stepStars(t, head);
     },
-    get busy() { return floaters.some((f) => f.kind !== 'star') || rings.length > 0 || !!dizzy || vortex.visible || radiance.visible; },
+    get busy() { return floaters.some((f) => f.kind !== 'star') || tears.length > 0 || rings.length > 0 || !!dizzy || vortex.visible || radiance.visible; },
     get count() { return floaters.filter((f) => f.kind !== 'star').length; },
+    get tears() { return tears.length; },
   };
 }

@@ -18,12 +18,16 @@
 //     pop out; grab him and shake, and his limbs flop about; shake hard and he spins right round;
 //   - a thread waiting on you: he holds its orb out to you, bouncing, glancing from you to it;
 //   - a thread that fails: he flinches and frowns at its cracked red orb until you look at it;
+//   - a provider hits its rate or usage limit: he cries (tears run down his cheeks, he sobs and
+//     slumps) and the threads it refused die, each orb dissolving under the provider's big logo;
+//     he stays glum until the limit clears;
 //   - what each thread is doing trails behind its orb as faint glowing text (orbit.js); he looks
 //     at the orb you hover, and now and then at one on his own; the busier he is, the more his
 //     eyes dart and the lower he floats.
 //
 // Bridge (Swift -> page), all on window.t3boii:
-//   update(snapshot)        OrbitSnapshot JSON: spawn new orb ids, swallow gone ones (orbit.js)
+//   update(snapshot)        OrbitSnapshot JSON: spawn new orb ids, swallow gone ones (orbit.js);
+//                           a new entry in `limits` makes him cry, limited orbs dissolve
 //   setPaused(bool)         stop or resume rendering (screen sleep, occlusion)
 //   setReducedMotion(bool)  macOS Reduce Motion: fades for flights, still rings, damped idle motion
 //   setMuted(bool)          silence his sound effects (sounds.js); the Sounds menu toggle
@@ -48,7 +52,7 @@ import { createOrbit, fakeSnapshot } from './orbit.js';
 import { smoothSkinning, bindLidsToFace } from './skinning.js';
 import { createEffects } from './effects.js';
 import { createSounds } from './sounds.js';
-import { demo, demoPlaying } from './demo.js';
+import { demo, demoPlaying, limitShow } from './demo.js';
 
 // Non-verbal sound effects for when you play with him (sounds.js); Swift can mute them.
 const sounds = createSounds({ muted: !!window.__t3boiiConfig?.muted || new URLSearchParams(location.search).has('mute') });
@@ -83,6 +87,10 @@ const HEART_AFTER_S = 1; // stroke him this long before hearts start
 const SPIN_S = 0.95;     // shaken hard enough, he spins right round in this long
 const DIZZY_S = 2.4;     // ... and is dizzy for this long after
 const HOLD_BOB_S = 0.9;  // the hop while he holds out a waiting orb
+const CRY_S = 4.6;       // a fit of crying when a provider hits its limit; glum after, while it lasts
+const SAD_LINGER = 0.55; // how glum he stays while any limit lasts
+const TEAR_EVERY_S = [0.55, 1.1];   // tears while he cries, by turns from each eye
+const LINGER_TEAR_S = [5, 8];       // ... and now and then while he stays glum
 const CHATTER_S = [24, 42];   // he glances at one of his threads this often, on his own
 // His arms holding a waiting orb out: world-euler deltas for his left shoulder and elbow (the
 // right arm mirrors them).
@@ -285,8 +293,34 @@ function anchorWorld(anchor, out) {
   return anchor.mesh.getVertexPosition(anchor.index, out).applyMatrix4(anchor.mesh.matrixWorld).add(anchor.offset);
 }
 
+/// Where his tears run: for each eye, from just under it down his cheek, found by casting rays at
+/// his front in the rest pose (so they follow his skin), and kept in the space of the bone his face
+/// skin follows, so they ride his head.
+function findTearPaths() {
+  const head = bones[HEAD_BONE];
+  if (!head) return [];
+  scene.updateMatrixWorld(true);
+  const ray = new THREE.Raycaster();
+  return eyes.map((eye) => {
+    const centre = eye.bone.getWorldPosition(v3());
+    const side = Math.sign(centre.x - BALL.x) || 1;
+    const points = [];
+    for (let k = 0; k <= 9; k += 1) {
+      const u = k / 9;
+      const x = centre.x + side * eye.radius * (0.25 + 0.9 * u), y = centre.y - eye.radius * 1.02 - 0.27 * u;
+      ray.set(new THREE.Vector3(x, y, 5), new THREE.Vector3(0, 0, -1));
+      const hit = ray.intersectObject(character, true).find((h) => h.object.isSkinnedMesh && !h.object.name.startsWith('Lid'));
+      if (!hit) continue;
+      // Just off his skin, so the drop sits on it rather than in it.
+      points.push(head.worldToLocal(hit.point.clone().add(v3().set(0, 0, 0.012))));
+    }
+    return points.length >= 4 ? points : null;
+  }).filter(Boolean);
+}
+
 let forehead = null, mouth = null, cheeks = [];
 const eyes = [];              // { bone, front: local offset of the eye's front, radius }
+let tearPaths = [];           // per eye, points down his cheek from under it, in his face bone's space
 
 async function start() {
   const gltf = await loadModel();
@@ -332,6 +366,7 @@ async function start() {
     const front = hit ? hit.point : center.clone().add(new THREE.Vector3(0, 0, 0.075));
     eyes.push({ bone, front: bone.worldToLocal(front.clone()), radius: front.distanceTo(center) });
   }
+  tearPaths = findTearPaths();
   installGlow();
   installEyeMask();
   setMouthRest();
@@ -346,13 +381,13 @@ async function start() {
     mouthAnchor: () => { const m = anchorPage(mouth); return m && m.page; },
     setHitRegions: (key, rects) => window.t3boii.setHitRegions(key, rects),
     post,
-    events: { spawn: onSpawn, swallow: onSwallow, swallowed: onSwallowed, hover: onOrbHover, failed: onOrbFailed, waiting: onOrbWaiting },
+    events: { spawn: onSpawn, swallow: onSwallow, swallowed: onSwallowed, hover: onOrbHover, failed: onOrbFailed, waiting: onOrbWaiting, dying: onOrbDying },
     holdAnchor,
     front: orbitLayer,
     back: orbitBack,
   });
   orbit.setReducedMotion(reducedMotion);
-  if (pendingSnapshot) { orbit.update(pendingSnapshot); pendingSnapshot = null; }
+  if (pendingSnapshot) { orbit.update(pendingSnapshot); onLimits(pendingSnapshot.limits); pendingSnapshot = null; }
   ready = true;
   reportHitRegions(true);
   post({ type: 'ready', ok: true, position });
@@ -651,6 +686,10 @@ const spin = { meter: 0, t0: -10, dir: 1 };
 const hold = { amount: 0 };
 // A thread just failed: when he flinched, and the orb he frowns at.
 const upset = { t0: -10, id: null, glanceAt: -10 };
+// A provider hit its limit: when he burst into tears, how glum he is (0 .. 1, eased), the limits
+// now (`active`) and every limit he has cried over (`keys`, provider@since), the orb he watches
+// die, and when the next tear comes.
+const cry = { t0: -100, sad: 0, burst: 0, active: [], keys: new Set(), watch: null, watchUntil: -10, tearAt: Infinity, eye: 0 };
 // What he is looking at: the orb under the mouse, and when he next glances at a thread on his own.
 const talk = { hovered: null, nextChatter: 0, chatterId: null, chatterUntil: -10 };
 // Small things he does on his own: one at a time, { kind, t0, duration } or null.
@@ -716,6 +755,55 @@ function onOrbWaiting() {
   wake(now());
   sounds.ambient('hold');
   requestFrame();
+}
+
+/// Limits from a snapshot: a new one (a provider and when it began) makes him cry; he stays glum
+/// while any lasts. One he has already cried over never makes him cry again.
+function onLimits(list) {
+  cry.active = Array.isArray(list) ? list.filter((l) => l && typeof l.provider === 'string') : [];
+  const fresh = cry.active.filter((l) => !cry.keys.has(`${l.provider}@${l.since}`));
+  if (!fresh.length) return;
+  for (const l of fresh) cry.keys.add(`${l.provider}@${l.since}`);
+  if (cry.keys.size > 200) cry.keys = new Set([...cry.keys].slice(-100));
+  const t = now();
+  // Asleep, he wakes with a start into tears (no stretch).
+  if (sleep.level > 0.5) sleep.startle = t;
+  sleep.active = t; sleep.yawned = false;
+  act = null; dance = null;
+  cry.t0 = t;
+  cry.tearAt = t + 0.35;
+  sounds.ambient('sob', { delay: 0.15 });
+  requestFrame();
+}
+
+/// An orb whose provider refused it is dying: he watches it go, and it crumbles into dark chips.
+function onOrbDying(orb, d) {
+  const t = now();
+  cry.watch = orb.id; cry.watchUntil = t + d.duration * 0.8;
+  sleep.active = t;
+  requestFrame();
+  if (d.still || !effects) return;
+  // Chips fly in his scene on a plane in front of him, or behind him for an orb on the far side.
+  const at = pageToWorld(d.x, d.y, d.back ? -0.62 : 0.78);
+  if (at) effects.crumble(at, d.r / pxPerUnit, { delay: d.duration * 0.36, duration: d.duration * 0.56, count: 26 + Math.round(d.r / 3), size: clamp(d.r / 40, 0.6, 1.4) });
+}
+
+/// Tears while he cries (and now and then while he stays glum): one eye, then the other.
+function stepTears(t) {
+  if (!effects || !tearPaths.length) return;
+  const crying = t - cry.t0 < CRY_S - 0.8;
+  if (!crying && cry.sad < 0.3) { cry.tearAt = Infinity; return; }
+  if (cry.tearAt === Infinity) cry.tearAt = t + rand(...LINGER_TEAR_S);
+  if (t < cry.tearAt) return;
+  cry.tearAt = t + (crying ? rand(...TEAR_EVERY_S) : rand(...LINGER_TEAR_S));
+  const head = bones[HEAD_BONE];
+  const path = tearPaths[cry.eye++ % tearPaths.length];
+  if (!head || !path) return;
+  rig.updateMatrixWorld(true);
+  const from = head.matrixWorld.clone().invert();
+  const carry = new THREE.Matrix4();
+  effects.tear(path.map((p) => head.localToWorld(p.clone())), () => carry.multiplyMatrices(head.matrixWorld, from),
+    { size: crying ? rand(0.9, 1.2) : 0.85, still: reducedMotion });
 }
 
 /// Where his attention wanders on its own: back, frowning, to a failed orb you have not looked
@@ -851,6 +939,8 @@ function updateGaze(t, dt, psy, toViewer, mood = {}) {
   const hovered = talk.hovered && orbit?.orbById(talk.hovered);
   const chatter = t < talk.chatterUntil && talk.chatterId && orbit?.orbById(talk.chatterId);
   const failed = mood.frownAt && upset.id && orbit?.orbById(upset.id);
+  const dying = t < cry.watchUntil ? orbit?.dying : null;
+  const watching = dying && (dying.id === cry.watch || !orbit.orbById(cry.watch)) ? dying : null;
   if (mood.dizzy > 0.05) {
     // Dizzy: his eyes go round and round.
     gaze.tx = 0.55 * Math.cos(t * 7.5) * mood.dizzy; gaze.ty = 0.12 + 0.35 * Math.sin(t * 7.5) * mood.dizzy;
@@ -860,6 +950,12 @@ function updateGaze(t, dt, psy, toViewer, mood = {}) {
   } else if (psy > 0.4) {
     // Concentrating: eyes roll up toward the T3.
     gaze.tx = 0; gaze.ty = 0.5;
+  } else if (watching) {
+    // An orb dying of a limit: he watches it go.
+    lookAt(watching.page.x, watching.page.y);
+  } else if (mood.crying > 0.3) {
+    // Crying: eyes down, wandering a little.
+    gaze.tx = 0.12 * Math.sin(t * 0.7); gaze.ty = -0.3;
   } else if (failed) {
     // Frowning at the orb that failed.
     lookAt(failed.page.x, failed.page.y);
@@ -899,6 +995,8 @@ function updateGaze(t, dt, psy, toViewer, mood = {}) {
     // Idle: the blank stare. Straight ahead, with the faintest drift.
     gaze.tx = 0.03 * Math.sin(t * 0.21); gaze.ty = -0.02 + 0.02 * Math.sin(t * 0.13 + 1);
   }
+  // Glum, his eyes stay low whatever they are on.
+  if (mood.sad > 0.05 && !watching) gaze.ty = Math.max(-0.3, gaze.ty - 0.3 * mood.sad);
   const k = 1 - Math.exp(-dt * 14);   // quick saccade, then hold or pursue
   gaze.x += (gaze.tx - gaze.x) * k;
   gaze.y += (gaze.ty - gaze.y) * k;
@@ -908,7 +1006,7 @@ function updateGaze(t, dt, psy, toViewer, mood = {}) {
 /// and a big yawn just before he nods off.
 function scheduleAct(t, S, L) {
   if (act || reducedMotion || debug.calm) return;
-  const alone = !(orbit?.activeCount) && !drag && L < 0.05 && !dance && S < 0.02 && swallows.size === 0;
+  const alone = !(orbit?.activeCount) && !drag && L < 0.05 && !dance && S < 0.02 && swallows.size === 0 && cry.sad < 0.05;
   if (!alone) { nextFidget = Math.max(nextFidget, t + rand(8, 14)); return; }
   const after = debug.sleepAfter ?? SLEEP_AFTER_S * (1 - 0.5 * daylight.night);
   const idleFor = t - sleep.active;
@@ -1011,6 +1109,9 @@ function stepRagdoll(t, dt) {
 
 let ragdollEnergy = 0;
 const debug = { lid: null, sleepAfter: null, pucker: null, smirk: null, frown: null, mouth: null, droolAfter: null, hour: null, calm: null };   // checks can hold a face, or hurry his sleep
+// A made-up rate limit for `provider` (default: the one with the most orbs) on the real orbit: he
+// cries and its orbs dissolve; the real orbit comes back after (demo.js, scripts/demo.sh limit).
+debug.limit = (provider) => limitShow(provider);
 let floatPx = 0, swellNow = 1;
 
 function pose(t, dt) {
@@ -1074,6 +1175,21 @@ function pose(t, dt) {
   const glance = t - upset.glanceAt < 1.6 ? Math.sin(Math.PI * clamp01((t - upset.glanceAt) / 1.6)) : 0;
   const frown = Math.max(smooth(0.1, 0.45, sinceUpset) * (1 - smooth(3, 4.2, sinceUpset)), 0.6 * glance);
 
+  // A provider hit its limit: a fit of crying (sobs that shake him, eyes screwed up, mouth turned
+  // down and trembling), then glum while any limit lasts; it lifts when the last one clears.
+  const sinceCry = t - cry.t0;
+  const burst = sinceCry < CRY_S ? smooth(0, 0.4, sinceCry) * (1 - smooth(CRY_S - 1.2, CRY_S, sinceCry)) : 0;
+  const glum = cry.active.length ? SAD_LINGER : 0;
+  cry.sad = approach(cry.sad, Math.max(burst, glum), burst > cry.sad ? 5 : 0.9, dt);
+  const sad = cry.sad;
+  cry.burst = burst;
+  // Each sob: a quick catch of breath, then a shudder.
+  const sobPhase = (sinceCry * 1.15) % 1;
+  const sob = reducedMotion ? 0 : burst * Math.pow(Math.sin(Math.PI * Math.min(1, sobPhase / 0.4)), 2) * (sobPhase < 0.4 ? 1 : 0);
+  const shudder = reducedMotion ? 0 : burst * Math.sin(t * 43) * Math.exp(-((sobPhase - 0.42) ** 2) / 0.006);
+
+  if (burst > 0) sleep.active = t;   // crying keeps him up (without the stretch a wake brings)
+
   // Little things he does on his own while nothing else is going on.
   scheduleAct(t, S, L);
   let A = 0, actKind = null, actU = 0;
@@ -1099,21 +1215,21 @@ function pose(t, dt) {
   }
 
   // Float: a slow bob with a little sway, as if hanging in water. Powered up, he rises and bobs more.
-  const bob = amp * (0.035 + 0.03 * p) * (1 - 0.6 * S) * Math.sin(t * TAU / (3.8 - 0.8 * p + 2 * S + 0.8 * daylight.night));
+  const bob = amp * (0.035 + 0.03 * p) * (1 - 0.6 * S) * (1 - 0.45 * sad) * Math.sin(t * TAU / (3.8 - 0.8 * p + 2 * S + 0.8 * daylight.night + 1.4 * sad));
   const holdHop = amp * 0.045 * H * Math.abs(Math.sin(t * Math.PI / HOLD_BOB_S));
   rig.position.y = bob + 0.12 * p - 0.045 * busy - 0.04 * S + 0.06 * startle * amp + 0.08 * D * Math.abs(Math.sin(beat / 2))
-    + holdHop + 0.1 * hop + 0.03 * flinch + 0.05 * spinning;
+    + holdHop + 0.1 * hop + 0.03 * flinch + 0.05 * spinning - 0.07 * sad + 0.022 * sob;
   const lean = pet.over && L > 0.02 ? clamp((pet.x - ballOnPage().x) / 220, -1, 1) * -0.08 * L : 0;
   const purr = reducedMotion ? 0 : 0.012 * L * Math.sin(t * 22);
   rig.rotation.z = amp * 0.025 * Math.sin(t * TAU / 6.1 + 0.6) + lean + purr + motion.tilt + 0.07 * odd + 0.16 * D * Math.sin(beat / 2)
-    + 0.12 * dizzy * Math.sin(t * 5.2) * amp;
+    + 0.12 * dizzy * Math.sin(t * 5.2) * amp + 0.018 * shudder;
   const spinTurn = sinceSpin < SPIN_S ? spin.dir * TAU * (spinU < 0.5 ? 4 * spinU ** 3 : 1 - Math.pow(-2 * spinU + 2, 3) / 2) : 0;
   rig.rotation.y = amp * 0.07 * Math.sin(t * TAU / 9.3) * (1 - D) + danceSpin + spinTurn;
-  rig.rotation.x = -0.05 * open + 0.04 * gulpPulse - 0.13 * flinch + 0.06 * H;
+  rig.rotation.x = -0.05 * open + 0.04 * gulpPulse - 0.13 * flinch + 0.06 * H + 0.07 * sad - 0.03 * sob;
   // Swell: power rounds him out with an energetic throb; a gulp puffs him, a pat squishes him.
   const throb = reducedMotion ? 0 : 0.012 * p * Math.sin(t * 7.3);
-  const swell = 1 + 0.12 * p + throb + 0.035 * gulpPulse + 0.03 * startle + 0.025 * flinch;
-  const squash = 0.07 * patPulse - 0.05 * stretch + 0.06 * hop * Math.cos(Math.PI * actU);
+  const swell = 1 + 0.12 * p + throb + 0.035 * gulpPulse + 0.03 * startle + 0.025 * flinch - 0.03 * sad;
+  const squash = 0.07 * patPulse - 0.05 * stretch + 0.06 * hop * Math.cos(Math.PI * actU) - 0.035 * sob;
   rig.scale.set(swell * (1 + 0.7 * squash), swell * (1 - squash), swell);
   swellNow = swell;
   floatPx = (rig.position.y - bob) * pxPerUnit;
@@ -1123,11 +1239,12 @@ function pose(t, dt) {
   const breath = amp * (1 + 0.9 * S) * Math.sin(t * TAU / (4.2 - 1.2 * p - 0.8 * busy + 2.2 * S));
   add('Bone_014', -0.012 * breath);
   add('Bone_013', -0.018 * breath);
-  add('Bone_012', 0.010 * breath - 0.06 * psy + 0.05 * gulpPulse + 0.15 * S - 0.16 * stretch - 0.06 * flinch, 0.02 * Math.sin(t * 0.37));
+  add('Bone_012', 0.010 * breath - 0.06 * psy + 0.05 * gulpPulse + 0.15 * S - 0.16 * stretch - 0.06 * flinch + 0.13 * sad + 0.05 * sob, 0.02 * Math.sin(t * 0.37));
   // Arms drift with the float; powered up, they lift away from his sides; asleep, they hang.
   const drift = amp * (1 - 0.7 * S) * Math.sin(t * TAU / 3.8 + 1.1);
-  add('Bone_041', 0, 0, 0.05 + 0.035 * drift + 0.22 * p);
-  add('Bone_036', 0, 0, -0.05 - 0.035 * drift - 0.22 * p);
+  // Glum, his arms hang in at his sides; each sob jerks them a little.
+  add('Bone_041', 0, 0, 0.05 + 0.035 * drift * (1 - sad) + 0.22 * p - 0.1 * sad + 0.06 * sob);
+  add('Bone_036', 0, 0, -0.05 - 0.035 * drift * (1 - sad) - 0.22 * p + 0.1 * sad - 0.06 * sob);
   add('Bone_040', 0, 0, 0.08 * p);
   add('Bone_035', 0, 0, -0.08 * p);
   // Holding a waiting orb: both arms come forward and in, cupping it in front of his belly.
@@ -1163,7 +1280,7 @@ function pose(t, dt) {
   for (const limb of LIMBS) limb.chain.forEach((name, i) => add(name, limb.joints[i].x, 0, limb.joints[i].z));
 
   // Eyes glance; the lids blink, squint when happy, droop a touch in the blank stare.
-  updateGaze(t, dt, psy, odd > 0.3 || D > 0.1, { busy, dizzy: Math.max(dizzy, spinning), H, actKind, actU, frownAt: sinceUpset < 3.5 || glance > 0 });
+  updateGaze(t, dt, psy, odd > 0.3 || D > 0.1, { busy, dizzy: Math.max(dizzy, spinning), H, actKind, actU, frownAt: sinceUpset < 3.5 || glance > 0, crying: burst, sad });
   add('Eye_L', -gaze.y * 0.15, gaze.x * 0.2, 0);
   add('Eye_R', -gaze.y * 0.15, gaze.x * 0.2, 0);
   // Shoulders stay within the range his reskinned armpits deform cleanly in (see skinning.js):
@@ -1179,7 +1296,7 @@ function pose(t, dt) {
   const idle = !orbit?.activeCount && L < 0.05 && !drag;
   const rested = (idle ? 0.13 : 0.03) + 0.1 * daylight.night + 0.05 * busy;
   let lid = Math.max(blinkAmount(t, busy), rested + 0.5 * L + 0.18 * psy + 0.42 * odd + 0.38 * D + 0.25 * dizzy + 0.45 * stretch + 0.3 * yawn
-    + 0.12 * frown - (drag ? 0.03 : 0));
+    + 0.12 * frown + 0.66 * Math.min(sad, SAD_LINGER) + 0.2 * Math.max(0, sad - SAD_LINGER) + 0.1 * burst + 0.12 * sob - (drag ? 0.03 : 0));
   // Nodding off: the lids sink, now and then struggle half open, then shut.
   const drowsy = clamp01(S * 1.05 - (S > 0.15 && S < 0.9 ? 0.4 * Math.pow(Math.max(0, Math.sin(t * 0.9)), 10) : 0));
   lid = lerp(lid, drowsy, smooth(0, 0.25, S));
@@ -1195,20 +1312,21 @@ function pose(t, dt) {
   }
   // Mouth: blank and closed when idle; a smile while petted or after a gulp; open to swallow;
   // powered up, it hangs open a crack with light inside. Shaken hard, a little "o".
-  setShape('Smile', ((idle ? 0.04 : 0.14) + 0.62 * L + 0.9 * odd + 0.8 * D + 0.35 * H) * (1 - frown) * (1 - yawn));
+  setShape('Smile', ((idle ? 0.04 : 0.14) + 0.62 * L + 0.9 * odd + 0.8 * D + 0.35 * H) * (1 - frown) * (1 - yawn) * (1 - sad));
   // Sucking an orb in, his lips purse into a round O.
   const sucking = open * (sinceGulp < 0.15 ? 0 : 1);
   const mouthOpen = Math.max(0.85 * sucking, 0.14 * p, 0.35 * motion.shake * (drag ? 1 : 0), 0.05 * odd, 0.2 * D, S * (0.05 + 0.03 * breath),
-    0.5 * mouthLight(), 0.95 * yawn, 0.3 * stretch, 0.25 * dizzy, 0.4 * spinning, 0.3 * flinch);
+    0.5 * mouthLight() * (1 - burst), 0.95 * yawn, 0.3 * stretch, 0.25 * dizzy, 0.4 * spinning, 0.3 * flinch, 0.1 * burst + 0.22 * sob);
   setShape('Mouth_Open', debug.mouth ?? mouthOpen);
-  glow.uPucker.value = debug.pucker ?? Math.max(sucking, 0.35 * yawn, 0.5 * flinch);
+  glow.uPucker.value = debug.pucker ?? Math.max(sucking, 0.35 * yawn, 0.5 * flinch, 0.2 * sad);   // glum: a pout
   glow.uSmirk.value = debug.smirk ?? odd;
-  glow.uFrown.value = debug.frown ?? frown;
+  // Crying, his mouth turns right down and trembles.
+  glow.uFrown.value = debug.frown ?? Math.max(frown, 0.95 * sad + (reducedMotion ? 0 : 0.08 * burst * Math.sin(t * 19)));
 
   // Glow levels for the shader and sprites.
   glow.uPsy.value = psy;
   glow.uEyes.value = eyeLight() * (1 - lid * 0.85) * (1 - 0.3 * daylight.night);
-  glow.uMouthGlow.value = mouthLight();
+  glow.uMouthGlow.value = mouthLight() * (1 - burst);
   glow.uBlush.value = L;
   return { p, psy, lid, open: mouthOpen };
 }
@@ -1232,7 +1350,7 @@ function updateSprites(t, state) {
     showSprite(sprites.eyes[i], pos, eye.radius * 4.8 * swellNow, eyeLight() * (0.94 + 0.06 * Math.sin(t * 9 + i)));
     showSprite(sprites.eyeHalos[i], pos, eye.radius * 6 * swellNow, eyeGlow * open * 0.45);
   });
-  const mouthGlow = mouthLight();
+  const mouthGlow = mouthLight() * (1 - cry.burst);
   if (mouth) {
     const m = anchorWorld(mouth, tmpA);
     // Energy: sparks that skitter around his mouth, more of them the more powered he is.
@@ -1269,7 +1387,7 @@ function lively(t) {
     || (gulp >= 0 && t - gulp < ODD_SMILE_S) || (pat >= 0 && t - pat < 1) || ragdollEnergy > 0.02
     || effects?.busy || !!dance || (orbit?.wind ?? 0) > 0.01 || t - cursor.at < POINTER_GAZE_S + 0.3
     || t - spin.t0 < SPIN_S + DIZZY_S || spin.meter > 0 || !!act || hold.amount > 0.01 || t - upset.t0 < 4.5 || t - upset.glanceAt < 1.8
-    || t - sleep.startle < 1 || (sleep.level > 0.01 && sleep.level < 0.99);
+    || t - sleep.startle < 1 || (sleep.level > 0.01 && sleep.level < 0.99) || t - cry.t0 < CRY_S + 0.5;
 }
 
 function tick(nowMs) {
@@ -1288,9 +1406,11 @@ function tick(nowMs) {
     emitFloaters(t);
     stepDrool(t, dt);
     stepTalk(t);
+    stepTears(t);
     if (effects) {
       effects.setVortex(mouth && anchorWorld(mouth, v3()), rig.getWorldQuaternion(q4()), orbit?.wind ?? 0, t);
-      effects.setRadiance(mouth && anchorWorld(mouth, v3()), rig.getWorldQuaternion(q4()), mouthLight() * (1 - (orbit?.wind ?? 0)), clamp01(state.open * 2), t, reducedMotion);
+      // No heavenly light while he cries.
+      effects.setRadiance(mouth && anchorWorld(mouth, v3()), rig.getWorldQuaternion(q4()), mouthLight() * (1 - (orbit?.wind ?? 0)) * (1 - cry.burst), clamp01(state.open * 2), t, reducedMotion);
       effects.step(t, dt, { head: ballWorld(0, 1.02, 0) });
     }
     renderer.render(scene, camera);
@@ -1462,6 +1582,7 @@ window.t3boii = {
     lastSnapshot = snapshot;
     if (!orbit) { pendingSnapshot = snapshot; return null; }
     const result = orbit.update(snapshot);
+    onLimits(snapshot?.limits);
     requestFrame();
     return result;
   },
@@ -1502,14 +1623,15 @@ window.t3boii = {
     return { power: +power.value.toFixed(3), load: +load.value.toFixed(2), pet: +pet.level.toFixed(3), psychic: psychic.length, swallowing: swallows.size, held: !!drag, ragdoll: +ragdollEnergy.toFixed(3),
       sleep: +sleep.level.toFixed(3), dancing: !!dance, floaters: effects?.count ?? 0, drool: +drool.len.toFixed(1),
       spinning: now() - spin.t0 < SPIN_S, dizzy: now() - spin.t0 < SPIN_S + DIZZY_S, holding: +hold.amount.toFixed(2), upset: now() - upset.t0 < 4.2,
-      act: act?.kind ?? null, night: +daylight.night.toFixed(2) };
+      act: act?.kind ?? null, night: +daylight.night.toFixed(2),
+      crying: now() - cry.t0 < CRY_S, sad: +cry.sad.toFixed(2), limits: cry.active.length, tears: effects?.tears ?? 0 };
   },
   debug,
   // A scripted ~43 s show of his animations, for screen recordings (demo.js); demo(false) stops it.
   demo,
   get lastSnapshot() { return lastSnapshot; },
   // The scene graph, for debugging and future layers.
-  internals: { THREE, scene, camera, renderer, rig, bones, morphs, glow, sprites, get character() { return character; }, get effects() { return effects; }, HOLD_POSE, lidBias, stage, orbitLayer, spin, upset, talk, sleep, swallows, wake: () => wake(now()) },
+  internals: { THREE, scene, camera, renderer, rig, bones, morphs, glow, sprites, get character() { return character; }, get effects() { return effects; }, HOLD_POSE, lidBias, stage, orbitLayer, spin, upset, talk, sleep, swallows, cry, get tearPaths() { return tearPaths; }, wake: () => wake(now()) },
 };
 
 const query = new URLSearchParams(location.search);

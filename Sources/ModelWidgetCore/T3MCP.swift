@@ -214,8 +214,11 @@ public struct T3ThreadActivity: Equatable, Sendable {
     /// Position of the last item returned; read on with `afterPosition` = this.
     public var nextPosition: Int?
     public var hasMore: Bool
+    /// Run id → the provider instance that ran it, for the runs the read returned (`recentRuns`).
+    /// A thread handed to another provider keeps its earlier runs' provider here.
+    public var runProviders: [String: String]
 
-    public init(threadId: String, status: T3ThreadStatus, activeRunId: String?, pendingRequestCount: Int, itemCount: Int, items: [T3TimelineItem], nextPosition: Int?, hasMore: Bool) {
+    public init(threadId: String, status: T3ThreadStatus, activeRunId: String?, pendingRequestCount: Int, itemCount: Int, items: [T3TimelineItem], nextPosition: Int?, hasMore: Bool, runProviders: [String: String] = [:]) {
         self.threadId = threadId
         self.status = status
         self.activeRunId = activeRunId
@@ -224,6 +227,7 @@ public struct T3ThreadActivity: Equatable, Sendable {
         self.items = items
         self.nextPosition = nextPosition
         self.hasMore = hasMore
+        self.runProviders = runProviders
     }
 }
 
@@ -299,7 +303,10 @@ public enum T3Payload {
             itemCount: (thread["itemCount"] as? NSNumber)?.intValue ?? 0,
             items: items,
             nextPosition: cursor(object["nextPosition"]),
-            hasMore: object["hasMore"] as? Bool ?? false
+            hasMore: object["hasMore"] as? Bool ?? false,
+            runProviders: Dictionary((object["recentRuns"] as? [[String: Any]] ?? []).compactMap { run in
+                (run["runId"] as? String).flatMap { id in (run["providerInstanceId"] as? String).map { (id, $0) } }
+            }, uniquingKeysWith: { first, _ in first })
         )
     }
 
@@ -427,8 +434,20 @@ public enum T3OrbMapper {
     public static func orbId(_ key: String) -> String { idPrefix + key }
 
     private static func provider(_ thread: T3Thread, _ driverKinds: [String: String]) -> String {
-        let instance = thread.providerInstanceId ?? ""
-        return driverKinds[instance] ?? (instance.isEmpty ? "generic" : instance)
+        providerId(instance: thread.providerInstanceId, driverKinds: driverKinds)
+    }
+
+    /// Driver kinds that host many agents (Kimi runs on T3's ACP registry driver): the instance id
+    /// names the agent and its badge, the driver kind does not.
+    static let registryDrivers: Set<String> = ["acpRegistry"]
+
+    /// The provider id an orb carries for its badge: the instance's driver kind (`codex`,
+    /// `claudeAgent`, ...), or the instance id itself when it has none or a registry driver.
+    public static func providerId(instance: String?, driverKinds: [String: String]) -> String {
+        let instance = instance ?? ""
+        guard !instance.isEmpty else { return "generic" }
+        guard let kind = driverKinds[instance], !registryDrivers.contains(kind) else { return instance }
+        return kind
     }
 
     /// T3's web route for a thread: `<origin>/<environmentId>/<threadId>`.

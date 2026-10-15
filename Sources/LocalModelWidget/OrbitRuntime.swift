@@ -10,6 +10,7 @@ import Security
 /// earlier poll) contributes its last good orbs for at most one interval, then nothing, and never
 /// holds up the other sources. An orb leaves only once it has been missing from two polls in a
 /// row (`OrbitRemovalHold`), so a gap between a thread's turns or one bad poll is not a respawn.
+/// The T3 source also says which providers are at a rate or usage limit (`limits`).
 @MainActor
 final class OrbitRuntime {
     static let pollInterval: TimeInterval = 5
@@ -87,7 +88,9 @@ final class OrbitRuntime {
                 lists.append(self.fallback.resolve(source: index, result: result, now: now))
             }
             self.polling = false
-            let snapshot = self.hold.apply(OrbitSnapshot.merged(lists))
+            var snapshot = self.hold.apply(OrbitSnapshot.merged(lists))
+            // Providers at a rate or usage limit: T3boii cries once per new one.
+            snapshot.limits = await self.t3.limits(now: now)
             if let json = self.gate.jsonIfChanged(snapshot) { self.deliver(json) }
         }
     }

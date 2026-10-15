@@ -7,6 +7,11 @@ import Foundation
 public enum DemoProjects {
     /// `notifyutil -p local.codex.LocalModelWidget.demo` (scripts/demo.sh) starts the demo.
     public static let notificationName = "local.codex.LocalModelWidget.demo"
+    /// `scripts/demo.sh limit [provider]`: a made-up rate limit for one provider on the real orbit
+    /// (`window.t3boii.debug.limit`). A Darwin notification carries no payload, so each provider has
+    /// its own name, `<notificationName>.limit.<provider>`; the bare `.limit` lets the page pick.
+    public static let limitNotificationName = notificationName + ".limit"
+    public static let limitProviders = ["codex", "claudeAgent", "cursor", "grok", "grokBot", "kimi", "opencode", "pi", "antigravity"]
     public static let maxProjects = 12
 
     public struct Entry: Encodable, Equatable, Sendable {

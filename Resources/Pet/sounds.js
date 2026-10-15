@@ -43,6 +43,7 @@ const CLIPS = {
   dance: { gain: 0.55, cooldown: 10,   rate: 0.06, vol: 0.1 },    // the all-done dance
   yawn:  { gain: 0.55, cooldown: 20,   rate: 0.1,  vol: 0.1 },    // a yawn before he nods off
   snore: { gain: 0.4,  cooldown: 4.5,  rate: 0.12, vol: 0.2 },    // asleep, with the Zs
+  sob:   { gain: 0.6,  cooldown: 8,    rate: 0.06, vol: 0.1 },    // a provider hit its limit: sniffles and a low whimper
 };
 
 export function createSounds({ base = new URL('./sfx/', import.meta.url).href, muted = false } = {}) {

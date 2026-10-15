@@ -3,9 +3,27 @@ import Foundation
 /// What T3boii's orbit shows. Swift owns it; the pet page receives it as JSON via `window.t3boii.update(snapshot)`.
 public struct OrbitSnapshot: Codable, Equatable, Sendable {
     public var orbs: [Orb]
+    /// Providers at a rate or usage limit right now, one per episode: a new one makes T3boii cry.
+    public var limits: [ProviderLimit]
 
-    public init(orbs: [Orb] = []) {
+    public init(orbs: [Orb] = [], limits: [ProviderLimit] = []) {
         self.orbs = orbs
+        self.limits = limits
+    }
+
+    private enum CodingKeys: String, CodingKey { case orbs, limits }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        orbs = try container.decode([Orb].self, forKey: .orbs)
+        limits = try container.decodeIfPresent([ProviderLimit].self, forKey: .limits) ?? []
+    }
+
+    /// `limits` only when there are any, so a snapshot without limits reads as it always has.
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(orbs, forKey: .orbs)
+        if !limits.isEmpty { try container.encode(limits, forKey: .limits) }
     }
 }
 
@@ -38,8 +56,13 @@ public struct Orb: Codable, Equatable, Sendable {
     public var activity: String?
     /// When it last did anything, in seconds since 1970, so the page can tell a busy orb from a stuck one.
     public var activeAt: Double?
+    /// Its provider refused it for a rate or usage limit: the orb dies (dissolves under the provider's
+    /// logo) instead of cracking. nil, not false, otherwise, so the JSON only says so when it is.
+    public var limited: Bool?
+    /// The provider that refused it, for that logo; usually `provider`.
+    public var limitProvider: String?
 
-    public init(id: String, parentId: String? = nil, source: Source, projectIcon: OrbIcon, provider: String, state: State = .active, label: String? = nil, link: String? = nil, activity: String? = nil, activeAt: Double? = nil) {
+    public init(id: String, parentId: String? = nil, source: Source, projectIcon: OrbIcon, provider: String, state: State = .active, label: String? = nil, link: String? = nil, activity: String? = nil, activeAt: Double? = nil, limited: Bool? = nil, limitProvider: String? = nil) {
         self.id = id
         self.parentId = parentId
         self.source = source
@@ -50,6 +73,8 @@ public struct Orb: Codable, Equatable, Sendable {
         self.link = link
         self.activity = activity
         self.activeAt = activeAt
+        self.limited = limited
+        self.limitProvider = limitProvider
     }
 }
 

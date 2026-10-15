@@ -85,6 +85,19 @@
   .orb[data-state="failed"][data-seen] .orb-crack { opacity: .5; }
   .orb.cracking .orb-face, .orb.cracking .orb-crack { animation: crack-jolt .6s cubic-bezier(.3, .7, .4, 1); }
   @keyframes crack-jolt { 0% { transform: scale(1.18); } 15% { transform: translateX(-6%) scale(.96); } 30% { transform: translateX(5%); } 45% { transform: translateX(-3%); } 60% { transform: translateX(2%); } 100% { transform: none; } }
+  /* Its provider hit a limit: the orb dies under a big copy of the provider's logo (orbit.js drives
+     the darkening, the dissolve and the logo's size from frame to frame). */
+  .orb-doom { position: absolute; z-index: 5; left: 50%; top: 50%; width: 175%; height: 175%; object-fit: contain; opacity: 0; pointer-events: none;
+    transform: translate(-50%, -50%) scale(.3); will-change: transform, opacity, filter; }
+  .orb-doom.round { border-radius: 50%; object-fit: cover; }
+  .orb[data-dying] .orb-alert, .orb[data-dying] .orb-crack { display: none; }
+  .orb[data-dying] .orb-face { animation: none; }
+  /* The darkened ball keeps a glassy highlight, a cold violet rim and a faint aura, so it still reads
+     on a dark desktop; orbit.js burns them away with it (--aura). */
+  .orb[data-dying]::before { content: ""; position: absolute; inset: 0; z-index: 2; border-radius: 50%; pointer-events: none; opacity: var(--aura, 0);
+    background: radial-gradient(circle at 34% 28%, rgba(232, 222, 255, .55) 0, rgba(232, 222, 255, .14) 13%, rgba(0, 0, 0, 0) 30%);
+    box-shadow: inset 0 0 0 1.5px rgba(206, 184, 255, .7), inset 0 calc(var(--orb, 36px) * -.1) calc(var(--orb, 36px) * .22) rgba(150, 105, 255, .7),
+      0 0 calc(var(--orb, 36px) * .5) calc(var(--orb, 36px) * .06) rgba(120, 64, 230, .7); }
   /* Psychic flight out of his forehead: a violet aura that fades as the orb settles. */
   .orb.psychic .orb-face { box-shadow: 0 0 calc(var(--orb, 36px) * .35) calc(var(--orb, 36px) * .06) rgba(196, 165, 255, .85), 0 0 calc(var(--orb, 36px) * .9) rgba(150, 110, 255, .45); }
   .orb.hover .orb-face { box-shadow: 0 0 calc(var(--orb, 36px) * .3) calc(var(--orb, 36px) * .04) rgba(236, 226, 255, .75), 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42); }

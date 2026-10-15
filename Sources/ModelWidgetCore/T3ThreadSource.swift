@@ -264,6 +264,10 @@ public struct T3MCPConnector: Sendable {
 /// and rotate between threads; a thread not read this poll keeps what its last read found.
 /// Orbs are never capped.
 ///
+/// A thread that failed is read once more, just its last few items, to see whether its provider
+/// refused it for a rate or usage limit; so are active threads' reads. Limits mark their orbs
+/// (`Orb.limited`) and become episodes per provider (`ProviderLimitEpisodes`, `limits(now:)`).
+///
 /// Without a usable token it connects headlessly, at most once per `reconnectInterval` unless
 /// asked to. Any failure yields `[]` and one log line per new kind of problem; nothing reaches the UI.
 public actor T3ThreadSource: OrbitSource {
@@ -274,6 +278,9 @@ public actor T3ThreadSource: OrbitSource {
     static let recentPageSize = 15
     /// A non-active thread updated this recently may have a subagent still running.
     static let recentWindow: TimeInterval = 120
+    /// Failed threads whose tails are read per poll, for why they failed, and how many items each.
+    static let maxFailureReadsPerPoll = 6
+    static let failureTailItems = 8
 
     private let client: T3MCPClient
     private let connector: T3MCPConnector
@@ -296,6 +303,10 @@ public actor T3ThreadSource: OrbitSource {
     /// parent whose own turn ended can hold its satellites (`T3OrbMapper.holdingParents`).
     private var knownThreads: [String: (project: T3Project, thread: T3Thread)] = [:]
     private var retention = FailedOrbRetention()
+    /// Failed threads' tails as last read: the limit that ended them, if one did, and the thread's
+    /// `updatedAt` then, so each failure is read once.
+    private var failureReads: [String: (updatedAt: Date?, providerInstanceId: String?, limit: T3LimitItem?)] = [:]
+    private var episodes = ProviderLimitEpisodes()
     /// The projects the last poll listed, for the demo (`DemoProjects`).
     public private(set) var knownProjects: [T3Project] = []
 
@@ -334,6 +345,11 @@ public actor T3ThreadSource: OrbitSource {
             report("T3 not reachable (\(Self.describe(error))); orbit empty")
             return []
         }
+    }
+
+    /// Providers at a rate or usage limit, as of the last poll; one that has lifted since goes now.
+    public func limits(now: Date) -> [ProviderLimit] {
+        episodes.update(sightings: [], progress: [], now: now)
     }
 
     /// The "Connect T3" action: get a fresh token now, whatever the last attempt was.
@@ -447,6 +463,10 @@ public actor T3ThreadSource: OrbitSource {
             }
         }
         let failedShown = retention.update(activeIds: activeIds, failed: failed, now: now)
+        let failedThreads = groups.flatMap { group in
+            group.recent.filter { $0.status.isFailed && !$0.isProviderNativeSubagent && failedShown.contains(T3OrbMapper.orbId($0.threadId)) }
+        }
+        await readFailures(failedThreads)
 
         let kinds = driverKinds ?? [:]
         let origin = client.origin
@@ -495,7 +515,57 @@ public actor T3ThreadSource: OrbitSource {
         }
         let inOrbit = Set(orbs.map(\.id))
         knownThreads = knownThreads.filter { listed.contains($0.key) || inOrbit.contains(T3OrbMapper.orbId($0.key)) }
-        return orbs
+
+        // Rate and usage limits: the orbs they hit, and one episode per provider.
+        var hits: [String: String] = [:]
+        var sightings: [ProviderLimitEpisodes.Sighting] = []
+        let sight = { (orbId: String, limit: T3LimitItem, provider: String) in
+            guard let at = limit.item.updatedAt, now.timeIntervalSince(at) < ProviderLimitEpisodes.freshness else { return }
+            hits[orbId] = provider
+            let words = [limit.item.title, limit.item.text].compactMap { $0 }.joined(separator: " ")
+            sightings.append(.init(provider: provider, at: at, until: ProviderLimitText.until(in: words, at: at)))
+        }
+        for (id, read) in failureReads {
+            if let limit = read.limit {
+                sight(T3OrbMapper.orbId(id), limit, T3OrbMapper.providerId(instance: limit.providerInstanceId ?? read.providerInstanceId, driverKinds: kinds))
+            }
+        }
+        for (id, entry) in reads {
+            guard let tracker = trackers[id] else { continue }
+            if let limit = tracker.limit {
+                sight(T3OrbMapper.orbId(id), limit, T3OrbMapper.providerId(instance: limit.providerInstanceId ?? entry.thread.providerInstanceId, driverKinds: kinds))
+            }
+            // A subagent's error may be another provider's words; it says whose when it can.
+            for item in tracker.currentSubagents where ProviderLimitText.isLimit(item) {
+                let provider = ProviderLimitText.providerHint(item.text ?? "") ?? T3OrbMapper.providerId(instance: entry.thread.providerInstanceId, driverKinds: kinds)
+                sight(T3OrbMapper.orbId(item.orbKey), T3LimitItem(item: item, providerInstanceId: nil), provider)
+            }
+        }
+        // Proof a provider works again: a running thread of it, not itself at a limit, still updating.
+        var progress: [ProviderLimitEpisodes.Progress] = []
+        for group in groups {
+            for thread in group.active where thread.status.rawValue == "running" && !thread.isProviderNativeSubagent && hits[T3OrbMapper.orbId(thread.threadId)] == nil {
+                if let at = thread.updatedAt { progress.append(.init(provider: T3OrbMapper.providerId(instance: thread.providerInstanceId, driverKinds: kinds), at: at)) }
+            }
+        }
+        _ = episodes.update(sightings: sightings, progress: progress, now: now)
+        return ProviderLimitText.mark(orbs, hits: hits)
+    }
+
+    /// Reads the tail of each newly shown failed thread once (within `maxFailureReadsPerPoll`), for
+    /// a limit that ended it. A failure no longer shown is forgotten.
+    private func readFailures(_ threads: [T3Thread]) async {
+        let shown = Set(threads.map(\.threadId))
+        failureReads = failureReads.filter { shown.contains($0.key) }
+        var budget = Self.maxFailureReadsPerPoll
+        for thread in threads where budget > 0 {
+            if let read = failureReads[thread.threadId], read.updatedAt == thread.updatedAt { continue }
+            budget -= 1
+            var arguments: [String: Any] = ["threadId": thread.threadId, "view": "activity", "limit": Self.failureTailItems, "maxCharsPerItem": T3ActivityPhrase.readChars, "runLimit": 1]
+            if let count = thread.itemCount, count > Self.failureTailItems { arguments["afterPosition"] = count - Self.failureTailItems - 1 }
+            guard let activity = try? T3Payload.threadActivity(try await client.callTool("t3_thread_read", arguments: arguments)) else { continue }
+            failureReads[thread.threadId] = (thread.updatedAt, thread.providerInstanceId, ProviderLimitText.latestLimit(in: activity.items, runProviders: activity.runProviders))
+        }
     }
 
     /// Reads threads' timelines within the per-poll budget, least recently read first. A read that

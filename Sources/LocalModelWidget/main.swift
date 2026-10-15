@@ -28,10 +28,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let orbit = OrbitRuntime { [weak petLayer] json in petLayer?.updateOrbit(json: json) }
         self.orbit = orbit
         orbit.start()
-        // scripts/demo.sh: T3boii plays his scripted demo with the owner's real projects.
-        demoTrigger = PetDemoTrigger { [weak orbit, weak petLayer] in
+        // scripts/demo.sh: T3boii plays his scripted demo with the owner's real projects;
+        // `scripts/demo.sh limit [provider]` fakes a rate limit on the real orbit.
+        demoTrigger = PetDemoTrigger(action: { [weak orbit, weak petLayer] in
             Task { @MainActor in petLayer?.startDemo(payloadJSON: await orbit?.demoPayload()) }
-        }
+        }, limit: { [weak petLayer] provider in
+            petLayer?.startLimitDemo(provider: provider)
+        })
     }
 }
 

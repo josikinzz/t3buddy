@@ -20,9 +20,10 @@ Everything lives in one transparent window pinned to the desktop (below normal w
 - A short line about what each thread is doing ("reading pet.js", "running swift build", "thinking…") trails behind its orb.
 - A thread waiting on you (a pending question or approval) is held out in front of him, pulsing amber. Clicking it opens that thread in T3 Code's web UI.
 - A failed thread's orb cracks and turns red and stays until you hover or click it, for up to ten minutes.
+- When a provider hits a rate or usage limit, he cries (tears, sobs, a sad sound), and each thread it refused dies: its orb darkens under a big copy of the provider's logo and crumbles away. He stays glum until the limit clears. Limits are read from T3 Code itself: the error T3 records when a provider refuses a run ("Usage limit reached", "You've reached your 5-hour usage limit", "Selected model is at capacity", and so on), mapped to the provider whose run it was.
 - If the Grok Bot app is installed, its in-flight agents appear as orbs too.
 - He can be petted, dragged and shaken, falls asleep when nothing is running, and honours Reduce Motion. See DESIGN.md for the full behaviour.
-- Playing with him makes quiet, deep, non-verbal sound effects (soft low hums, thuds and whooshes with reverb; no voice, nothing shrill), generated with ElevenLabs and bundled in `Resources/Pet/sfx/`. Turn them off with **T3boii sounds** in the Subscription Usage card's gear menu.
+- Playing with him makes quiet, deep, non-verbal sound effects (soft low hums, thuds and whooshes with reverb; no voice, nothing shrill), generated with ElevenLabs and bundled in `Resources/Pet/sfx/` (the crying sound, `sob.mp3`, is cut from those clips with ffmpeg). Turn them off with **T3boii sounds** in the Subscription Usage card's gear menu.
 
 **Cards**
 - **Local Models:** the model currently loaded on Bonsai (`http://127.0.0.1:8080`), Magnitude (`http://127.0.0.1:10100` and the `magnitude` CLI) or Ollama (`http://127.0.0.1:11434`), with an Unload button. A host that is not running is skipped. The gear menu also opens a bundled model benchmark document (`Resources/ModelBenchmarks.*`).
@@ -72,11 +73,13 @@ Prefer the packaged app for real use; the LaunchAgent points at it. The app has 
 
 ### Demo mode
 
-With the app running, `scripts/demo.sh` plays T3boii's scripted demo (about 43 seconds, for screen recordings): asleep with Zs and drool, woken with a stretch, threads glowing out of his forehead with subagents and activity trails, a few swallowed, one waiting on you, one failing, a build to 20+ threads (white eyes, light from his mouth), then swallowed back in waves and his all-done dance. It uses your real projects (T3 Code's projects and the git folders in `~/Projects`, with the same icons live threads get). Petting and shaking are left out: do those by hand afterwards. Run the script again to restart it; afterwards his orbit returns to your real threads. The script posts a Darwin notification (`notifyutil -p local.codex.LocalModelWidget.demo`); nothing listens on the network. With Reduce Motion on, the effects it shows are toned down as usual.
+With the app running, `scripts/demo.sh` plays T3boii's scripted demo (about 44 seconds, for screen recordings): asleep with Zs and drool, woken with a stretch, threads glowing out of his forehead with subagents and activity trails, a few swallowed, one waiting on you, one failing, a build to 20+ threads (white eyes, light from his mouth), Codex hitting its usage limit (he cries and its threads dissolve under its logo), then swallowed back in waves and his all-done dance. It uses your real projects (T3 Code's projects and the git folders in `~/Projects`, with the same icons live threads get). Petting and shaking are left out: do those by hand afterwards. Run the script again to restart it; afterwards his orbit returns to your real threads. The script posts a Darwin notification (`notifyutil -p local.codex.LocalModelWidget.demo`); nothing listens on the network.
+
+`scripts/demo.sh limit [provider]` fakes just a rate limit on your real orbit: he cries and that provider's orbs dissolve (`provider` is one of `codex`, `claudeAgent`, `cursor`, `grok`, `grokBot`, `kimi`, `opencode`, `pi`, `antigravity`; without one, the provider with the most orbs). About nine seconds later your real threads come back. It posts `local.codex.LocalModelWidget.demo.limit[.<provider>]`. In a browser or the web inspector, `window.t3boii.debug.limit('codex')` does the same. With Reduce Motion on, the effects it shows are toned down as usual.
 
 ## How the T3 Code connection works
 
-The app talks to T3 Code's MCP server over Streamable HTTP at `POST http://127.0.0.1:3773/mcp` with a bearer token, using only read tools: `orchestrator_capabilities`, `t3_environment_read`, `t3_project_list`, `t3_thread_list` and `t3_thread_read`. It polls every five seconds.
+The app talks to T3 Code's MCP server over Streamable HTTP at `POST http://127.0.0.1:3773/mcp` with a bearer token, using only read tools: `orchestrator_capabilities`, `t3_environment_read`, `t3_project_list`, `t3_thread_list` and `t3_thread_read`. It polls every five seconds. A thread that has just failed is read once more (its last eight timeline items) to see whether its provider refused it for a rate or usage limit.
 
 It gets its token without a browser, through T3 Code's MCP OAuth endpoints (authorization code with PKCE):
 

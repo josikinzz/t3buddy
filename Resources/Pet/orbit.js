@@ -29,6 +29,12 @@
 //                                  until you look at it (hover a moment, or click); then it greys,
 //                                  sinks and fades. It stays even after the snapshot drops it,
 //                                  for up to FAILED_KEEP_S, until you have seen it.
+//   limited (any state)         -> its provider refused it for a rate or usage limit: it dies where
+//                                  it is. It darkens to black under a big copy of its provider's
+//                                  logo, then dissolves, eaten away from within with a glowing rim
+//                                  while dark chips crumble off it (pet.js, effects.js). It stays
+//                                  gone while the snapshot still says it is limited; back unlimited,
+//                                  it is a new orb.
 // A main orb also shows how lively its thread is: it breathes quickly while its thread is busy,
 // slowly when quiet, and a thread quiet for minutes drifts out from its ring and dims.
 // Moving between places is a short glide. With reduced motion, flights become fades,
@@ -72,6 +78,9 @@ const SEEN_HOVER_S = 0.6;        // hovering a failed orb this long counts as lo
 const ACKED_FADE_S = 20;         // a seen failed orb sinks and fades over this long
 const BUSY_S = 20, QUIET_S = 180, STALE_S = 600;   // a thread's last activity: busy, quiet, stale
 const MOTES = 22;                // drifting specks of light along each ring
+const DISSOLVE_S = 2.7;          // a limited orb darkens, shows its provider's logo and dissolves
+const DISSOLVE_STILL_S = 2.2;    // ... with reduced motion: fades only
+const DOOM_SIZE = 1.75;          // the provider logo over a dying orb, in orb sizes
 const BADGES = {
   codex: 'codex.svg', claudeAgent: 'claudeAgent.svg', grok: 'grok.svg', antigravity: 'antigravity.svg',
   cursor: 'cursor.svg', opencode: 'opencode.svg', pi: 'pi.svg', kimi: 'kimi.svg', grokBot: 'grokBot.png',
@@ -140,6 +149,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
   const ringGlow = [];           // per ring, 0 .. 1: how lit its energy line is
   let ringsInUse = 0;
   let wind = 0;                  // 0 .. 1: how hard air rushes into his mouth
+  const dead = new Set();        // ids dissolved for a limit, kept out while the snapshot still says limited
 
   const glowDot = makeGlowDot();
   let pointer = null;            // { x, y, at }
@@ -251,11 +261,25 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
   // --------------------------------------------------------------- update
 
   function update(snapshot) {
-    const list = Array.isArray(snapshot?.orbs) ? snapshot.orbs.filter((o) => o && typeof o.id === 'string') : [];
+    const all = Array.isArray(snapshot?.orbs) ? snapshot.orbs.filter((o) => o && typeof o.id === 'string') : [];
+    // An orb its provider refused for a limit dies where it is, once; it stays out of the scene while
+    // the snapshot still says limited. One that arrives already limited never shows.
+    const reported = new Set(all.map((o) => o.id));
+    for (const id of dead) if (!reported.has(id)) dead.delete(id);
+    const list = [], dying = [];
+    for (const data of all) {
+      if (!data.limited) { dead.delete(data.id); list.push(data); continue; }
+      if (dead.has(data.id)) continue;
+      dead.add(data.id);
+      const orb = orbs.get(data.id);
+      if (orb && orb.phase !== 'leaving') { dissolve(orb, data.limitProvider || data.provider); dying.push(data.id); }
+    }
     const incoming = new Map(list.map((o) => [o.id, o]));
     const added = [], removed = [];
     for (const data of list) {
-      const orb = orbs.get(data.id);
+      let orb = orbs.get(data.id);
+      // Back from a limit while it was still dissolving: that one goes, and it comes out anew.
+      if (orb && orb.phase === 'leaving' && orb.leaveTo === 'dissolve') { remove(orb); orb = null; }
       if (!orb) {
         orbs.set(data.id, makeOrb(data));
         added.push(data.id);
@@ -308,7 +332,25 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     }
     order = order.filter((id) => incoming.has(id) || orbs.get(id)?.kept).concat(list.map((o) => o.id).filter((id) => !order.includes(id)));
     assignLayout();
-    return { added, removed };
+    return { added, removed, dying };
+  }
+
+  /// Starts a limited orb's death where it is: it stops, darkens under a big copy of its provider's
+  /// logo, and dissolves (see dissolveFrame).
+  function dissolve(orb, provider) {
+    const key = BADGES[provider] ? provider : 'generic';
+    const logo = document.createElement('img');
+    logo.className = 'orb-doom';
+    logo.alt = '';
+    logo.draggable = false;
+    logo.src = `./badges/${BADGES[key] || 'generic.svg'}`;
+    logo.classList.toggle('round', key === 'grokBot');
+    orb.el.appendChild(logo);
+    orb.doom = { logo, provider: key, filters: reduced ? null : [dissolveFilter(orb.seed, 0.075), dissolveFilter(orb.seed + 3.1, 0.05)] };
+    orb.phase = 'leaving'; orb.leaveTo = 'dissolve'; orb.t0 = null; orb.delay = 0; orb.announced = false; orb.blend = null;
+    orb.from = { ...orb.page, scale: orb.scale || 1, opacity: orb.opacity || 1 };
+    orb.el.dataset.dying = '1';
+    orb.el.classList.remove('psychic', 'hover', 'cracking');
   }
 
   /// The orb's parent when it can orbit it: present, not leaving, and no loop in the chain.
@@ -587,6 +629,8 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
         if (t < orb.t0) {
           // Queued for his mouth: it keeps its place until its turn.
           orb.page = { x: start.x, y: start.y }; orb.scale = start.scale; orb.opacity = start.opacity ?? 1;
+        } else if (orb.leaveTo === 'dissolve') {
+          if (dissolveFrame(orb, t)) { remove(orb); continue; }
         } else if (orb.leaveTo === 'fade') {
           const p = clamp01((t - orb.t0) / (orb.mode === 'failed' ? 1 : FADE_S));
           orb.page = { x: start.x, y: start.y };
@@ -886,6 +930,45 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     setTimeout(() => orb.el.classList.remove('cracking'), 700);
   }
 
+  /// One frame of a limited orb's death; true once it is gone. It jolts, then darkens to near black as
+  /// its provider's logo grows in over it; then the sphere is eaten away from within, a glowing rim
+  /// running ahead of the hole, and last the logo goes the same way. It sinks a touch as it crumbles.
+  /// With reduced motion it only darkens and fades, the logo with it.
+  function dissolveFrame(orb, t) {
+    const still = reduced || !orb.doom.filters;
+    const duration = still ? DISSOLVE_STILL_S : DISSOLVE_S;
+    const u = clamp01((t - orb.t0) / duration);
+    const start = orb.from;
+    if (!orb.announced) {
+      orb.announced = true;
+      events.dying?.(orb, { x: start.x, y: start.y, r: ORB * start.scale / 2, back: orb.layer === back, duration, provider: orb.doom.provider, still });
+    }
+    const dark = smoothstep(0.03, 0.42, u);
+    const jolt = still ? 0 : u < 0.12 ? Math.sin(u / 0.12 * Math.PI) : 0;
+    const shiver = still ? 0 : Math.sin(t * 70 + orb.seed) * ORB * 0.025 * (1 - smoothstep(0.08, 0.45, u));
+    orb.page = { x: start.x + shiver, y: start.y + (still ? 0 : smoothstep(0.4, 1, u) * ORB * 0.18) };
+    orb.scale = start.scale * (1 + 0.14 * jolt);
+    orb.opacity = (start.opacity ?? 1) * (still ? 1 - smoothstep(0.62, 1, u) : 1);
+    const [sphere, mark] = orb.doom.filters || [];
+    const eat = still ? 0 : smoothstep(0.38, 0.9, u), eatLogo = still ? 0 : smoothstep(0.64, 1, u);
+    if (sphere) setDissolve(sphere, eat);
+    if (mark) setDissolve(mark, eatLogo);
+    orb.face.style.filter = `${eat > 0 ? `url(#${sphere.id}) ` : ''}brightness(${(1 - 0.7 * dark).toFixed(3)}) saturate(${(1 - 0.8 * dark).toFixed(3)})`;
+    // A cold violet rim and aura keep the darkened glass ball readable on a dark desktop; they burn
+    // away with it.
+    orb.el.style.setProperty('--aura', (dark * Math.pow(1 - eat, 1.5)).toFixed(3));
+    // The logo swells in with a little overshoot and rises a touch, glowing so it reads on the dark.
+    const grow = easeOutBack(clamp01((u - 0.05) / 0.32));
+    const logo = orb.doom.logo;
+    logo.style.width = logo.style.height = `${(DOOM_SIZE * 100).toFixed(0)}%`;
+    logo.style.opacity = (smoothstep(0.05, 0.22, u)).toFixed(3);
+    logo.style.transform = `translate(-50%, -50%) translateY(${(-(still ? 0 : smoothstep(0.1, 1, u)) * ORB * 0.25).toFixed(1)}px) scale(${(still ? 1 : 0.3 + 0.7 * grow).toFixed(3)})`;
+    logo.style.filter = `${eatLogo > 0 ? `url(#${mark.id}) ` : ''}drop-shadow(0 0 ${(ORB * 0.05).toFixed(1)}px rgba(255, 255, 255, .75)) drop-shadow(0 0 ${(ORB * 0.2).toFixed(1)}px rgba(150, 110, 255, .7))`;
+    if (u < 1) return false;
+    for (const f of orb.doom.filters || []) f.el.remove();
+    return true;
+  }
+
   function remove(orb) {
     orb.el.remove();
     orbs.delete(orb.id);
@@ -1011,6 +1094,11 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       for (const orb of orbs.values()) if (orb.phase !== 'leaving' && orb.mode !== 'failed') n += 1;
       return n;
     },
+    /// The first orb dying of a limit, while it does: he watches it go.
+    get dying() {
+      for (const orb of orbs.values()) if (orb.phase === 'leaving' && orb.leaveTo === 'dissolve') return orb;
+      return null;
+    },
     /// Orbs on their way into his mouth, including any queued for it.
     get pendingSwallows() {
       let n = 0;
@@ -1027,8 +1115,8 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     setReducedMotion(value) { reduced = !!value; },
     /// Drops every orb at once, with no flight or swallow: the demo (demo.js) clears the stage with it.
     reset() {
-      for (const orb of [...orbs.values()]) remove(orb);
-      order = []; lastSpawn = null; wind = 0;
+      for (const orb of [...orbs.values()]) { for (const f of orb.doom?.filters || []) f.el.remove(); remove(orb); }
+      order = []; lastSpawn = null; wind = 0; dead.clear();
       assignLayout();
     },
     get reducedMotion() { return reduced; },
@@ -1040,9 +1128,58 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
         id: o.id, phase: o.phase, mode: o.mode, parent: o.mode === 'sat' ? o.data.parentId : null, children: o.children,
         x: Math.round(o.page.x), y: Math.round(o.page.y), scale: +o.scale.toFixed(2), opacity: +o.opacity.toFixed(2), depth: +o.depth.toFixed(2),
         ring: o.target?.ring ?? o.sat?.ring ?? null, pace: o.pace, stale: +o.stale.toFixed(2), seen: o.seenAt !== null, kept: o.kept,
+        dying: o.leaveTo === 'dissolve' && o.phase === 'leaving',
       }));
     },
   };
+}
+
+const smoothstep = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
+
+// A dissolve, as an SVG filter on the orb's face (and one on its logo): fractal noise thresholded
+// into a mask that eats the element away as the threshold rises, with a band just inside the edge
+// of what is left lit in his violet, like embers at the rim of a burning hole.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+let filterDefs = null, filterSeq = 0;
+const DISSOLVE_SLOPE = 14, EMBER_BAND = 0.07;
+function dissolveFilter(seed, frequency) {
+  if (!filterDefs) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('width', '0'); svg.setAttribute('height', '0');
+    svg.setAttribute('aria-hidden', 'true');
+    svg.style.cssText = 'position:absolute;width:0;height:0;overflow:hidden';
+    filterDefs = document.createElementNS(SVG_NS, 'defs');
+    svg.appendChild(filterDefs);
+    document.body.appendChild(svg);
+  }
+  const node = (name, attrs, parent) => {
+    const n = document.createElementNS(SVG_NS, name);
+    for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, String(v));
+    parent.appendChild(n);
+    return n;
+  };
+  const id = `t3-dissolve-${++filterSeq}`;
+  const el = node('filter', { id, x: '-15%', y: '-15%', width: '130%', height: '130%', 'color-interpolation-filters': 'sRGB' }, filterDefs);
+  node('feTurbulence', { type: 'fractalNoise', baseFrequency: frequency, numOctaves: 3, seed: Math.round(seed * 1000) % 997, result: 'noise' }, el);
+  node('feColorMatrix', { in: 'noise', type: 'matrix', values: '0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  1 0 0 0 0', result: 'grain' }, el);
+  const keep = node('feFuncA', { type: 'linear', slope: DISSOLVE_SLOPE, intercept: 1 }, node('feComponentTransfer', { in: 'grain', result: 'keep' }, el));
+  const hot = node('feFuncA', { type: 'linear', slope: DISSOLVE_SLOPE, intercept: 1 }, node('feComponentTransfer', { in: 'grain', result: 'hot' }, el));
+  node('feComposite', { in: 'SourceGraphic', in2: 'keep', operator: 'in', result: 'body' }, el);
+  node('feFlood', { 'flood-color': '#c9a8ff', result: 'ember' }, el);
+  node('feComposite', { in: 'ember', in2: 'keep', operator: 'in', result: 'rim' }, el);
+  node('feComposite', { in: 'rim', in2: 'hot', operator: 'out', result: 'rimBand' }, el);
+  node('feComposite', { in: 'rimBand', in2: 'SourceAlpha', operator: 'in', result: 'rimLit' }, el);
+  const merge = node('feMerge', {}, el);
+  node('feMergeNode', { in: 'body' }, merge);
+  node('feMergeNode', { in: 'rimLit' }, merge);
+  return { id, el, keep, hot };
+}
+
+/// 0 .. 1: how much of the element the dissolve has eaten. Grain is fractal noise, mostly 0.25 .. 0.75.
+function setDissolve(filter, amount) {
+  const threshold = 0.18 + 0.7 * amount;
+  filter.keep.setAttribute('intercept', (1 - DISSOLVE_SLOPE * threshold).toFixed(3));
+  filter.hot.setAttribute('intercept', (1 - DISSOLVE_SLOPE * (threshold + EMBER_BAND)).toFixed(3));
 }
 
 function hashOf(text) {

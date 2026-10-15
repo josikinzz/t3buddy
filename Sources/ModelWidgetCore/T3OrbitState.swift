@@ -102,6 +102,9 @@ public struct T3ActivityTracker: Sendable {
     public private(set) var latestPhrase: String?
     /// The last position read; the next forward read starts after it.
     public private(set) var scannedThrough: Int?
+    /// The provider refused the thread's latest work for a rate or usage limit, and nothing has
+    /// happened in it since (`ProviderLimitText.latestLimit`).
+    public private(set) var limit: T3LimitItem?
     private var misses: [String: Int] = [:]
 
     public init() {}
@@ -142,6 +145,7 @@ public struct T3ActivityTracker: Sendable {
             latest = item
             latestPhrase = phrase
         }
+        limit = ProviderLimitText.latestLimit(in: activity.items, runProviders: activity.runProviders, current: limit)
         for item in activity.items where item.isSubagent {
             subagents[item.orbKey] = item
             misses[item.orbKey] = nil

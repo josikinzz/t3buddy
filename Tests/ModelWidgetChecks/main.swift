@@ -560,6 +560,7 @@ struct ModelWidgetChecks {
         await grokRosterChecks(&suite)
         await reviewFixChecks(&suite)
         await orbitStateChecks(&suite)
+        await providerLimitChecks(&suite)
         suite.finish()
     }
 }
