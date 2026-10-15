@@ -20,7 +20,7 @@
 //   - a thread that fails: he flinches and frowns at its cracked red orb until you look at it;
 //   - a provider hits its rate or usage limit: he cries (tears run down his cheeks, he sobs and
 //     slumps) and the threads it refused die, each orb dissolving under the provider's big logo;
-//     he stays glum until the limit clears;
+//     he stays glum a while, and it is all over within about a minute (SAD_S), limit or no;
 //   - what each thread is doing trails behind its orb as faint glowing text (orbit.js); he looks
 //     at the orb you hover, and now and then at one on his own; the busier he is, the more his
 //     eyes dart and the lower he floats.
@@ -53,6 +53,7 @@ import { smoothSkinning, bindLidsToFace } from './skinning.js';
 import { createEffects } from './effects.js';
 import { createSounds } from './sounds.js';
 import { demo, demoPlaying, limitShow } from './demo.js';
+import { tremble } from './motion.js';
 
 // Non-verbal sound effects for when you play with him (sounds.js); Swift can mute them.
 const sounds = createSounds({ muted: !!window.__t3boiiConfig?.muted || new URLSearchParams(location.search).has('mute') });
@@ -87,8 +88,13 @@ const HEART_AFTER_S = 1; // stroke him this long before hearts start
 const SPIN_S = 0.95;     // shaken hard enough, he spins right round in this long
 const DIZZY_S = 2.4;     // ... and is dizzy for this long after
 const HOLD_BOB_S = 0.9;  // the hop while he holds out a waiting orb
-const CRY_S = 4.6;       // a fit of crying when a provider hits its limit; glum after, while it lasts
+const CRY_S = 4.6;       // a fit of crying when a provider hits its limit; glum after, while it lasts (up to SAD_S)
 const SAD_LINGER = 0.55; // how glum he stays while any limit lasts
+// The whole sad spell a limit brings on (tears, sobs, glum slump and pout) is over this long after
+// the limit that set him off, even if it still lasts; only a new limit (another provider, or a fresh one
+// after it cleared) starts another. The glum lifts over SAD_FADE_S, settled 4 s before the end.
+const SAD_S = 60;
+const SAD_FADE_S = 8;
 const TEAR_EVERY_S = [0.55, 1.1];   // tears while he cries, by turns from each eye
 const LINGER_TEAR_S = [5, 8];       // ... and now and then while he stays glum
 const CHATTER_S = [24, 42];   // he glances at one of his threads this often, on his own
@@ -758,7 +764,7 @@ function onOrbWaiting() {
 }
 
 /// Limits from a snapshot: a new one (a provider and when it began) makes him cry; he stays glum
-/// while any lasts. One he has already cried over never makes him cry again.
+/// while any lasts, for SAD_S at most. One he has already cried over never makes him cry again.
 function onLimits(list) {
   cry.active = Array.isArray(list) ? list.filter((l) => l && typeof l.provider === 'string') : [];
   const fresh = cry.active.filter((l) => !cry.keys.has(`${l.provider}@${l.since}`));
@@ -792,7 +798,8 @@ function onOrbDying(orb, d) {
 function stepTears(t) {
   if (!effects || !tearPaths.length) return;
   const crying = t - cry.t0 < CRY_S - 0.8;
-  if (!crying && cry.sad < 0.3) { cry.tearAt = Infinity; return; }
+  // No new tears once his glum starts to lift, so the last has dried well before SAD_S.
+  if (!crying && (cry.sad < 0.3 || t - cry.t0 > SAD_S - 4 - SAD_FADE_S)) { cry.tearAt = Infinity; return; }
   if (cry.tearAt === Infinity) cry.tearAt = t + rand(...LINGER_TEAR_S);
   if (t < cry.tearAt) return;
   cry.tearAt = t + (crying ? rand(...TEAR_EVERY_S) : rand(...LINGER_TEAR_S));
@@ -1176,17 +1183,18 @@ function pose(t, dt) {
   const frown = Math.max(smooth(0.1, 0.45, sinceUpset) * (1 - smooth(3, 4.2, sinceUpset)), 0.6 * glance);
 
   // A provider hit its limit: a fit of crying (sobs that shake him, eyes screwed up, mouth turned
-  // down and trembling), then glum while any limit lasts; it lifts when the last one clears.
+  // down and trembling), then glum while any limit lasts; it lifts when the last one clears, or
+  // anyway by SAD_S after the limit came.
   const sinceCry = t - cry.t0;
   const burst = sinceCry < CRY_S ? smooth(0, 0.4, sinceCry) * (1 - smooth(CRY_S - 1.2, CRY_S, sinceCry)) : 0;
-  const glum = cry.active.length ? SAD_LINGER : 0;
-  cry.sad = approach(cry.sad, Math.max(burst, glum), burst > cry.sad ? 5 : 0.9, dt);
+  const glum = cry.active.length ? SAD_LINGER * (1 - smooth(SAD_S - 4 - SAD_FADE_S, SAD_S - 4, sinceCry)) : 0;
+  cry.sad = sinceCry < SAD_S ? approach(cry.sad, Math.max(burst, glum), burst > cry.sad ? 5 : 0.9, dt) : 0;
   const sad = cry.sad;
   cry.burst = burst;
   // Each sob: a quick catch of breath, then a shudder.
   const sobPhase = (sinceCry * 1.15) % 1;
   const sob = reducedMotion ? 0 : burst * Math.pow(Math.sin(Math.PI * Math.min(1, sobPhase / 0.4)), 2) * (sobPhase < 0.4 ? 1 : 0);
-  const shudder = reducedMotion ? 0 : burst * Math.sin(t * 28) * Math.exp(-((sobPhase - 0.42) ** 2) / 0.005);
+  const shudder = reducedMotion ? 0 : burst * tremble(t, 28) * Math.exp(-((sobPhase - 0.42) ** 2) / 0.005);
 
   if (burst > 0) sleep.active = t;   // crying keeps him up (without the stretch a wake brings)
 
@@ -1220,7 +1228,7 @@ function pose(t, dt) {
   rig.position.y = bob + 0.12 * p - 0.045 * busy - 0.04 * S + 0.06 * startle * amp + 0.08 * D * Math.abs(Math.sin(beat / 2))
     + holdHop + 0.1 * hop + 0.03 * flinch + 0.05 * spinning - 0.07 * sad + 0.022 * sob;
   const lean = pet.over && L > 0.02 ? clamp((pet.x - ballOnPage().x) / 220, -1, 1) * -0.08 * L : 0;
-  const purr = reducedMotion ? 0 : 0.009 * L * Math.sin(t * 16);
+  const purr = reducedMotion ? 0 : 0.009 * L * tremble(t, 16);
   rig.rotation.z = amp * 0.025 * Math.sin(t * TAU / 6.1 + 0.6) + lean + purr + motion.tilt + 0.07 * odd + 0.16 * D * Math.sin(beat / 2)
     + 0.12 * dizzy * Math.sin(t * 5.2) * amp + 0.011 * shudder;
   const spinTurn = sinceSpin < SPIN_S ? spin.dir * TAU * (spinU < 0.5 ? 4 * spinU ** 3 : 1 - Math.pow(-2 * spinU + 2, 3) / 2) : 0;
@@ -1321,7 +1329,7 @@ function pose(t, dt) {
   glow.uPucker.value = debug.pucker ?? Math.max(sucking, 0.35 * yawn, 0.5 * flinch, 0.2 * sad);   // glum: a pout
   glow.uSmirk.value = debug.smirk ?? odd;
   // Crying, his mouth turns right down and trembles.
-  glow.uFrown.value = debug.frown ?? Math.max(frown, 0.95 * sad + (reducedMotion ? 0 : 0.05 * burst * Math.sin(t * 14)));
+  glow.uFrown.value = debug.frown ?? Math.max(frown, 0.95 * sad + (reducedMotion ? 0 : 0.05 * burst * tremble(t, 14)));
 
   // Glow levels for the shader and sprites.
   glow.uPsy.value = psy;

@@ -39,6 +39,13 @@ public struct Orb: Codable, Equatable, Sendable {
         case failed
     }
 
+    /// What a waiting orb waits on: the owner's answer to a question (it shows a "?"), or their
+    /// approval of something it wants to do (a "!").
+    public enum WaitingFor: String, Codable, Sendable {
+        case input
+        case approval
+    }
+
     /// Stable across snapshots; the scene diffs ids to spawn and reabsorb.
     public var id: String
     /// Set for a subagent; the orb orbits its parent's orb.
@@ -48,6 +55,8 @@ public struct Orb: Codable, Equatable, Sendable {
     /// T3 driver id (`codex`, `claudeAgent`, `grok`, ...) for the badge.
     public var provider: String
     public var state: State
+    /// Set only when `state` is `.waiting`, and only when the source can tell.
+    public var waitingFor: WaitingFor?
     /// Short human label, for example the thread or agent title.
     public var label: String?
     /// Where clicking the orb goes, for example the thread in T3's web UI.
@@ -62,13 +71,14 @@ public struct Orb: Codable, Equatable, Sendable {
     /// The provider that refused it, for that logo; usually `provider`.
     public var limitProvider: String?
 
-    public init(id: String, parentId: String? = nil, source: Source, projectIcon: OrbIcon, provider: String, state: State = .active, label: String? = nil, link: String? = nil, activity: String? = nil, activeAt: Double? = nil, limited: Bool? = nil, limitProvider: String? = nil) {
+    public init(id: String, parentId: String? = nil, source: Source, projectIcon: OrbIcon, provider: String, state: State = .active, waitingFor: WaitingFor? = nil, label: String? = nil, link: String? = nil, activity: String? = nil, activeAt: Double? = nil, limited: Bool? = nil, limitProvider: String? = nil) {
         self.id = id
         self.parentId = parentId
         self.source = source
         self.projectIcon = projectIcon
         self.provider = provider
         self.state = state
+        self.waitingFor = waitingFor
         self.label = label
         self.link = link
         self.activity = activity

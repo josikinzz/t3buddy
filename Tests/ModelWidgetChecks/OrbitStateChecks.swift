@@ -1,4 +1,5 @@
 import Foundation
+import JavaScriptCore
 import ModelWidgetCore
 
 extension ModelWidgetChecks {
@@ -43,6 +44,33 @@ extension ModelWidgetChecks {
             try expectEqual(waiting.map(\.state), [.waiting])
             let answered = T3OrbMapper.orbs(project: project, threads: [parent], icon: icon, pendingRequests: ["parent-1": 0])
             try expectEqual(answered.map(\.state), [.active])
+        }
+
+        suite.check("A held orb asks with a \"?\" when its thread wants your input, and alerts with \"!\" for an approval") {
+            // `t3_pending_request_list` lists only questions; `pendingRequestCount` counts approvals too.
+            let questions = try T3Payload.pendingQuestionIds(try toolPayload(wrap(#"{"requestIds":["request:q1"]}"#)))
+            try expectEqual(questions, ["request:q1"])
+            let parent = T3Thread(threadId: "parent-1", title: "orbit work", status: T3ThreadStatus(rawValue: "running"), providerInstanceId: "claudeAgent")
+            func held(requests: Int, questions: Int) -> Orb? {
+                T3OrbMapper.orbs(project: project, threads: [parent], icon: icon, pendingRequests: ["parent-1": requests], pendingQuestions: ["parent-1": questions]).first
+            }
+            try expectEqual(held(requests: 1, questions: 1)?.waitingFor, .input)
+            try expectEqual(held(requests: 2, questions: 1)?.waitingFor, .input)
+            try expectEqual(held(requests: 1, questions: 0)?.waitingFor, .approval)
+            try expectEqual(held(requests: 0, questions: 0)?.waitingFor, nil)
+            let json = String(decoding: try JSONEncoder().encode(OrbitSnapshot(orbs: held(requests: 1, questions: 1).map { [$0] } ?? [])), as: UTF8.self)
+            try expect(json.contains(#""waitingFor":"input""#), "the page receives waitingFor: \(json)")
+
+            // The page draws the mark from orbit.js's WAIT_MARK table.
+            let orbit = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../Resources/Pet/orbit.js").standardizedFileURL
+            let source = try String(contentsOf: orbit, encoding: .utf8)
+            guard let line = source.split(separator: "\n").first(where: { $0.hasPrefix("const WAIT_MARK = ") }),
+                  let table = line.dropFirst("const WAIT_MARK = ".count).split(separator: ";").first,
+                  let marks = JSContext()?.evaluateScript("(\(table))")?.toDictionary() as? [String: String] else {
+                throw CheckFailure.message("orbit.js has no WAIT_MARK table")
+            }
+            try expectEqual(marks[Orb.WaitingFor.input.rawValue], "?")
+            try expectEqual(marks[Orb.WaitingFor.approval.rawValue], "!")
         }
 
         // MARK: Failed retention
@@ -105,6 +133,52 @@ extension ModelWidgetChecks {
             try expectEqual(satellites[2].label, "widgets · subagent")
             try expectEqual(satellites[0].provider, "claudeAgent")
             try expectEqual(satellites[0].link, "http://127.0.0.1:3773/env/parent-1")
+        }
+
+        suite.check("A Claude subagent's satellite trails what its own thread is doing") {
+            let parent = T3Thread(threadId: "6d82", title: "vibration", status: T3ThreadStatus(rawValue: "running"), providerInstanceId: "claudeAgent")
+            // Shaped like T3 Code 0.0.46-nightly.20261015: the parent's `subagent` item and the idle thread T3 keeps for it.
+            let claude = T3TimelineItem(position: 192, itemId: "turn-item:provider:claudeAgent:native-item:task%3Aa5b0%3Asubagent", subagentId: "node:provider:claudeAgent:native-item:task%3Aa5b0", type: "subagent", status: "running", title: "Status tails for subagent orbs", text: "Status tails for subagent orbs")
+            let codex = T3TimelineItem(position: 437, itemId: "turn-item:provider:codex:native-item:call_d1aa%3A01a1410f-2d32", subagentId: "node:provider:codex:native-item:call_d1aa%3A01a1410f-2d32", type: "subagent", status: "running", title: "/root/review_runtime")
+            func native(_ id: String, _ title: String, provider: String, parent: String = "6d82") -> T3Thread {
+                T3Thread(threadId: id, title: title, status: T3ThreadStatus(rawValue: "idle"), providerInstanceId: provider, parentThreadId: parent, relationshipToParent: "subagent", creationSource: "provider", itemCount: 58)
+            }
+            let claudeThread = native("thread:provider:claudeAgent:native-thread:provider-thread%3Aprovider%3AclaudeAgent%3Anative-thread%3Apending%253Arun%253Athread%253A6d82%253Aordinal%253A6%3Aa5b0", "Status tails for subagent orbs", provider: "claudeAgent")
+            let sibling = native("thread:provider:claudeAgent:native-thread:provider-thread%3Apending%3Aa338", "Limit crying", provider: "claudeAgent")
+            let codexThread = native("thread:provider:codex:native-thread:01a1410f-2d32", "/root/review_runtime", provider: "codex")
+            let listed = [sibling, codexThread, claudeThread, native("thread:elsewhere%3Aa5b0", "Status tails for subagent orbs", provider: "claudeAgent", parent: "other")]
+            try expectEqual(T3OrbMapper.subagentThread(for: claude, parentThreadId: "6d82", among: listed)?.threadId, claudeThread.threadId)
+            try expectEqual(T3OrbMapper.subagentThread(for: codex, parentThreadId: "6d82", among: listed)?.threadId, codexThread.threadId)
+            // Its own thread's tail says what it is doing, in T3boii's words.
+            let tail = [
+                T3TimelineItem(position: 56, itemId: "a", type: "reasoning", status: "completed", title: "Thinking"),
+                T3TimelineItem(position: 57, itemId: "b", type: "command_execution", status: "running", text: "$ cd /tmp/w && swift build 2>&1 | tail"),
+                T3TimelineItem(position: 55, itemId: "c", type: "assistant_message", status: "completed", text: "Old news.")
+            ]
+            try expectEqual(T3ActivityPhrase.latest(in: tail), "running swift build")
+            let orbs = T3OrbMapper.subagentOrbs(parent: parent, project: project, items: [claude, codex], icon: icon, driverKinds: ["claudeAgent": "claudeAgent"], activity: [claude.orbKey: "running swift build"])
+            try expectEqual(orbs.map(\.activity), ["running swift build", nil])
+            try expectEqual(orbs.map(\.parentId), ["t3:6d82", "t3:6d82"])
+
+            // Not read yet: what it last reported to its parent, never its task or a prompt.
+            func reported(_ text: String?, status: String = "running") -> String? {
+                var item = claude
+                item.text = text
+                item.status = status
+                return T3OrbMapper.subagentOrbs(parent: parent, project: project, items: [item], icon: icon, failedShown: [T3OrbMapper.orbId(item.orbKey)]).first?.activity
+            }
+            try expectEqual(reported("Running Check sounds, effects, and sad usage"), "running check sounds, effects, and sad usage")
+            try expectEqual(reported("Reading /Users/tester/widgets/Resources/Pet/orbit.js"), "reading orbit.js")
+            try expectEqual(reported("Status tails for subagent orbs"), nil)
+            try expectEqual(reported("You are reviewing the diff.\nRead every file."), nil)
+            try expectEqual(reported(String(repeating: "x", count: T3ActivityPhrase.readChars)), nil)
+            try expectEqual(reported("Running Check sounds", status: "failed"), nil)
+
+            // A delegated subagent is a thread of its own and trails its own activity too.
+            let delegated = T3Thread(threadId: "thread:delegated-task:lids", title: "lids", status: T3ThreadStatus(rawValue: "running"), providerInstanceId: "claudeAgent", parentThreadId: "6d82", relationshipToParent: "subagent", creationSource: "mcp")
+            let child = T3OrbMapper.orbs(project: project, threads: [delegated], icon: icon, activity: [delegated.threadId: "reading pet.js"])
+            try expectEqual(child.map(\.activity), ["reading pet.js"])
+            try expectEqual(child.map(\.parentId), ["t3:6d82"])
         }
 
         suite.check("Activity tracker reads the tail once, then new items plus windows around running subagents") {

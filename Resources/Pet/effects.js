@@ -14,6 +14,8 @@
 // Positions are world units (his model metres); `pageToWorld` maps page CSS px onto a plane
 // in front of him for effects that start where the mouse is.
 
+import { tremble } from './motion.js';
+
 const TAU = Math.PI * 2;
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const smooth = (a, b, v) => { const t = clamp01((v - a) / (b - a)); return t * t * (3 - 2 * t); };
@@ -439,7 +441,7 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
         // Welling: the bead swells at his lid, trembling as it fills.
         const w = smooth(0, WELL_S, age);
         tr.drop.position.copy(tr.curve.getPointAt(0));
-        tr.drop.scale.set(bead * w * (1 + 0.06 * Math.sin(age * 31)), bead * w * (1.05 + 0.1 * w), bead * w);
+        tr.drop.scale.set(bead * w * (1 + 0.06 * tremble(age, 31)), bead * w * (1.05 + 0.1 * w), bead * w);
         tr.drop.quaternion.identity();
       } else if (age < WELL_S + RUN_S) {
         // Running: it lets go and slides down his cheek, gathering speed, stretched along the way.

@@ -24,7 +24,8 @@
 //   active, parent in orbit     -> a satellite circling its parent's orb (spawns from
 //                                  and is reabsorbed into the parent when it can be)
 //   waiting                     -> leaves orbit: the first is held out in his hands, pulsing
-//                                  amber with a "!"; any others bob in a row in front of him
+//                                  amber with a "?" when it asks you a question (waitingFor
+//                                  "input"), a "!" otherwise; any others bob in a row in front of him
 //   failed                      -> cracks and turns red, and stays put just outside its ring
 //                                  until you look at it (hover a moment, or click); then it greys,
 //                                  sinks and fades. It stays even after the snapshot drops it,
@@ -43,7 +44,10 @@
 // What a thread is doing trails behind its orb like a comet's tail: faint glowing words laid
 // along the path the orb has just flown, clearly legible at the orb and fading out behind it. Hover an
 // orb and its words light up (and T3boii looks at it, events.hover); a waiting thread's read
-// amber, a failed one's red.
+// amber, a failed one's red. Subagents trail theirs too, smaller and fainter; a parent's satellites
+// share one small ring, so they take turns, one tail at a time.
+
+import { tremble } from './motion.js';
 
 // Sizes follow his rendered body, so the orbit scales with the stage.
 const ORB_PER_HEIGHT = 0.14;     // face diameter as a share of his on-screen height
@@ -61,11 +65,14 @@ const SAT_PERIOD = 6;            // seconds per lap on a parent's first satellit
 const BLEND_S = 0.9;             // glide between orbit, satellite, waiting and failed places
 const FADE_S = 0.6;              // reduced motion: fade in or out in place
 const WAIT_BOB_S = 1.8;          // seconds per bob of a waiting orb
+// A waiting orb's badge, by what it waits on (`waitingFor`): a question asks, anything else alerts.
+const WAIT_MARK = { input: '?', approval: '!' };
 const FAIL_SINK = 0.09;          // a failed orb sinks this many orb sizes per second
 const GAZE_SPAWN_S = 1.8;        // how long his eyes follow a new orb
 const STIR_MS = 700;             // how long an orb already in orbit glows when its thread stirs again
 const TRAIL_CHARS = 44;          // longest a comet-trail line gets before it is cut with "…"
 const TRAIL_FONT_PX = 12;        // trail text size on a main orb; a satellite's is smaller
+const SAT_TURN_S = 4;            // how long each of a parent's satellites has its tail lit
 const BLUR_TAPS = [[-1.2, 0], [1.2, 0], [0, -1.2], [0, 1.2]];   // px offsets of a trail letter's glow copies
 // Rings lean back only a little: `tilt` squashes each circle very slightly, and `roll` tips
 // alternate rings a hair either way so stacked rings read as separate orbits.
@@ -227,19 +234,18 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     badge.draggable = false;
     const alert = document.createElement('span');
     alert.className = 'orb-alert';
-    alert.textContent = '!';
     const crack = document.createElement('div');
     crack.className = 'orb-crack';
     crack.innerHTML = CRACK_SVG;
     el.append(face, alert, crack);
     const orb = {
-      id: data.id, el, face, badge, data: null, faceKey: '', badgeKey: '', children: 0,
+      id: data.id, el, face, badge, alert, data: null, faceKey: '', badgeKey: '', children: 0,
       seed: hashOf(data.id) % 6283 / 1000,
       phase: 'spawning', t0: null, from: null, leaveTo: 'mouth', delay: 0, announced: false,
       mode: null, blend: null, fadeIn: null, failAt: null, failFrom: null,
       angle: null, ring: null, target: null, sat: null, satAngle: null, wait: null,
       layer: null, z: null, page: { x: 0, y: 0 }, scale: 0, opacity: 0, stretch: null, depth: 1, lit: -1,
-      seenAt: null, kept: false, pace: '', stale: 0, trail: [], trailFlip: false, trailText: '', trailGlow: 0,
+      seenAt: null, kept: false, pace: '', stale: 0, trail: [], trailFlip: false, trailText: '', trailGlow: 0, trailTurn: false,
     };
     applyData(orb, data);
     return orb;
@@ -255,6 +261,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       orb.badge.classList.toggle('round', provider === 'grokBot');   // no transparency: cut to a circle
     }
     orb.el.dataset.state = data.state || 'active';
+    orb.alert.textContent = WAIT_MARK[data.waitingFor] || WAIT_MARK.approval;
     orb.el.dataset.provider = data.provider || '';
   }
 
@@ -502,7 +509,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       const from = orb.failFrom;
       const spot = project({ offset: geo.gap0 + ORB * 0.4 }, from.angle);
       if (orb.seenAt === null) {
-        const shiver = motion * Math.max(0, Math.sin(t * 0.55 + orb.seed)) ** 18 * Math.sin(t * 34) * ORB * 0.02;
+        const shiver = motion * Math.max(0, Math.sin(t * 0.55 + orb.seed)) ** 18 * tremble(t, 34) * ORB * 0.02;
         return { x: spot.x + shiver, y: spot.y, scale: Math.max(1, from.scale) * 1.04, z: 900 };
       }
       const age = Math.min(t - orb.seenAt, ACKED_FADE_S);
@@ -787,6 +794,18 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       }
     }
     for (let k = ringGlow.length - 1; k >= ringsInUse && ringGlow[k] < 0.01; k -= 1) ringGlow.pop();
+    // Satellites' tails would run over the satellites behind them: one per parent is lit at a time.
+    const turns = new Map();
+    for (const orb of orbs.values()) {
+      if (orb.mode !== 'sat' || orb.phase === 'leaving' || !trailWords(orb)) continue;
+      if (!turns.has(orb.data.parentId)) turns.set(orb.data.parentId, []);
+      turns.get(orb.data.parentId).push(orb);
+    }
+    for (const group of turns.values()) {
+      group.sort((a, b) => (a.id < b.id ? -1 : 1));
+      const lit = group[Math.floor(t / SAT_TURN_S) % group.length];
+      for (const orb of group) orb.trailTurn = orb === lit;
+    }
     for (const orb of orbs.values()) drawTrail(orb, dt, grow);
 
     // How hard air rushes into his mouth: pet.js draws it as 3D wind.
@@ -801,7 +820,11 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     const d = orb.data;
     const words = d.state === 'waiting' ? 'needs you' : d.state === 'failed' ? 'failed' : (d.activity || '');
     const most = orb.mode === 'sat' ? Math.round(TRAIL_CHARS * 0.6) : TRAIL_CHARS;
-    return words.length > most ? words.slice(0, most - 1).trimEnd() + '…' : words;
+    if (words.length <= most) return words;
+    // Cut at a word boundary when there is one past halfway.
+    const cut = words.slice(0, most - 1);
+    const space = cut.lastIndexOf(' ');
+    return (space > most / 2 ? cut.slice(0, space) : cut).replace(/[\s,;:-]+$/, '') + '…';
   }
 
   /// Lays an orb's words along the path it has just flown, a letter at a time, each turned to
@@ -812,7 +835,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
   function drawTrail(orb, dt, grow) {
     const words = trailWords(orb);
     const live = orb.phase !== 'leaving' && orb.opacity > 0.05 && words;
-    const want = !live ? 0 : (orb === hovered ? 1 : orb.mode === 'waiting' ? 0.75 : orb.mode === 'failed' ? (orb.seenAt === null ? 0.7 : 0.25) : (orb.mode === 'sat' ? 0.5 : 0.78) * (1 - 0.6 * orb.stale));
+    const want = !live ? 0 : (orb === hovered ? 1 : orb.mode === 'waiting' ? 0.75 : orb.mode === 'failed' ? (orb.seenAt === null ? 0.7 : 0.25) : (orb.mode === 'sat' ? (orb.trailTurn ? 0.5 : 0) : 0.78) * (1 - 0.6 * orb.stale));
     orb.trailGlow += (want - orb.trailGlow) * (1 - Math.exp(-dt * 5));
     if (live) orb.trailText = words;
     // Remember the path, newest first.
@@ -945,7 +968,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     }
     const dark = smoothstep(0.03, 0.42, u);
     const jolt = still ? 0 : u < 0.12 ? Math.sin(u / 0.12 * Math.PI) : 0;
-    const shiver = still ? 0 : Math.sin(t * 40 + orb.seed) * ORB * 0.018 * (1 - smoothstep(0.08, 0.45, u));
+    const shiver = still ? 0 : tremble(t, 40, orb.seed) * ORB * 0.018 * (1 - smoothstep(0.08, 0.45, u));
     orb.page = { x: start.x + shiver, y: start.y + (still ? 0 : smoothstep(0.4, 1, u) * ORB * 0.18) };
     orb.scale = start.scale * (1 + 0.14 * jolt);
     orb.opacity = (start.opacity ?? 1) * (still ? 1 - smoothstep(0.62, 1, u) : 1);
@@ -1221,6 +1244,7 @@ function makeCanvas(layer) {
 /// ?fake=N: N made-up orbs across providers and monograms, for checking the scene in a browser.
 /// Some have satellites (one has a parent that is not in orbit), some wait on the owner, some failed.
 /// ?fake=N&churn: also shift them every few seconds to watch spawn, swallow and state changes.
+const SUB_ACTIVITY = ['reading orbit.js', 'running swift build', 'thinking…', 'searching for trailWords', 'running check sounds, effects, and sad usage'];
 export function fakeSnapshot(n, seed = 0) {
   const providers = ['codex', 'claudeAgent', 'grok', 'antigravity', 'cursor', 'opencode', 'pi', 'kimi', 'grokBot', 'somethingNew'];
   const names = ['data-pipeline', 'docs-site', 'game-engine', 'widgets', 'demo-app', 'notes', 'api-server', 'portfolio'];
@@ -1255,6 +1279,7 @@ export function fakeSnapshot(n, seed = 0) {
           provider: providers[(j + s) % providers.length],
           state: s === 3 ? 'waiting' : 'active',
           label: `${name} · subagent ${s}`,
+          activity: SUB_ACTIVITY[(j + s) % SUB_ACTIVITY.length],
         });
       }
     }

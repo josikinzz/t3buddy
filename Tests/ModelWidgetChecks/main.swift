@@ -561,6 +561,7 @@ struct ModelWidgetChecks {
         await reviewFixChecks(&suite)
         await orbitStateChecks(&suite)
         await providerLimitChecks(&suite)
+        await petMotionChecks(&suite)
         suite.finish()
     }
 }

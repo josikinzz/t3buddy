@@ -245,6 +245,12 @@ extension ModelWidgetChecks {
             try expect(snapshot.json().contains(#""src":"data:image/png;base64,AA==""#), "data URLs keep their slashes unescaped")
         }
 
+        suite.check("A satellite's activity reaches the pet page with its parent id") {
+            let satellite = Orb(id: "t3:node:provider:claudeAgent:native-item:task%3Aa5b0", parentId: "t3:6d82", source: .t3, projectIcon: .monogram("WS", color: "#000000"), provider: "claudeAgent", activity: "running swift build")
+            let json = OrbitSnapshot(orbs: [satellite]).json()
+            try expect(json.contains(#""activity":"running swift build""#) && json.contains(#""parentId":"t3:6d82""#), "satellite JSON: \(json)")
+        }
+
         suite.check("Pet layer only opens orb links to T3's local web UI") {
             try expect(PetLayerGeometry.isLocalThreadLink(URL(string: "http://127.0.0.1:3773/env/thread")!), "local T3 opens")
             try expect(!PetLayerGeometry.isLocalThreadLink(URL(string: "https://example.com/env/thread")!), "remote host is refused")

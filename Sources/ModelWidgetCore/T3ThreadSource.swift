@@ -262,7 +262,8 @@ public struct T3MCPConnector: Sendable {
 /// but its `updatedAt` follows the subagent's progress, so recently updated threads are read
 /// too, and a thread stays followed while it has a subagent running. Reads are capped per poll
 /// and rotate between threads; a thread not read this poll keeps what its last read found.
-/// Orbs are never capped.
+/// Orbs are never capped. A running provider-native subagent's own thread (listed `idle`
+/// whatever it does) is read just by its tail, for what its satellite is doing.
 ///
 /// A thread that failed is read once more, just its last few items, to see whether its provider
 /// refused it for a rate or usage limit; so are active threads' reads. Limits mark their orbs
@@ -281,6 +282,9 @@ public actor T3ThreadSource: OrbitSource {
     /// Failed threads whose tails are read per poll, for why they failed, and how many items each.
     static let maxFailureReadsPerPoll = 6
     static let failureTailItems = 8
+    /// Running provider-native subagents whose own threads' tails are read per poll, and how many items each.
+    static let maxSubagentReadsPerPoll = 8
+    static let subagentTailItems = 8
 
     private let client: T3MCPClient
     private let connector: T3MCPConnector
@@ -296,6 +300,8 @@ public actor T3ThreadSource: OrbitSource {
 
     private var trackers: [String: T3ActivityTracker] = [:]
     private var pendingRequests: [String: Int] = [:]
+    /// How many of those are questions (`t3_pending_request_list`); the rest are approvals.
+    private var pendingQuestions: [String: Int] = [:]
     private var lastReadAt: [String: Date] = [:]
     /// Threads being followed for their subagents, with their project.
     private var followed: [String: (project: T3Project, thread: T3Thread)] = [:]
@@ -306,6 +312,11 @@ public actor T3ThreadSource: OrbitSource {
     /// Failed threads' tails as last read: the limit that ended them, if one did, and the thread's
     /// `updatedAt` then, so each failure is read once.
     private var failureReads: [String: (updatedAt: Date?, providerInstanceId: String?, limit: T3LimitItem?)] = [:]
+    /// Running provider-native subagents by satellite orb key: their own threads, what each was
+    /// last seen doing there, and when each was last read.
+    private var subagentThreads: [String: T3Thread] = [:]
+    private var subagentActivity: [String: String] = [:]
+    private var subagentReadAt: [String: Date] = [:]
     private var episodes = ProviderLimitEpisodes()
     /// The projects the last poll listed, for the demo (`DemoProjects`).
     public private(set) var knownProjects: [T3Project] = []
@@ -432,7 +443,7 @@ public actor T3ThreadSource: OrbitSource {
         }
 
         // Threads to read: active ones that do their own work (provider-native subagent threads are
-        // only shells), recently updated ones, and ones with a subagent still running.
+        // read by their tail, below), recently updated ones, and ones with a subagent still running.
         var reads: [String: (project: T3Project, thread: T3Thread)] = [:]
         for group in groups {
             for thread in group.active where !thread.isProviderNativeSubagent {
@@ -449,6 +460,7 @@ public actor T3ThreadSource: OrbitSource {
         }
         await readActivity(of: reads.values.map(\.thread), now: now)
         followed = reads.filter { trackers[$0.key]?.currentSubagents.contains(where: \.isWorkActive) == true }
+        await readSubagentActivity(listed: groups.flatMap { $0.active + $0.recent }, now: now)
 
         // Which failures still show.
         let activeThreads = groups.flatMap(\.active).filter { !$0.isProviderNativeSubagent }
@@ -486,12 +498,12 @@ public actor T3ThreadSource: OrbitSource {
             let threads = group.active + group.recent.filter(\.status.isFailed)
             guard !threads.isEmpty else { continue }
             let activity = trackers.compactMapValues { $0.latestPhrase }
-            orbs += T3OrbMapper.orbs(project: group.project, threads: threads, icon: iconFor(group.project), driverKinds: kinds, pendingRequests: pendingRequests, failedShown: failedShown, activity: activity, threadURL: url)
+            orbs += T3OrbMapper.orbs(project: group.project, threads: threads, icon: iconFor(group.project), driverKinds: kinds, pendingRequests: pendingRequests, pendingQuestions: pendingQuestions, failedShown: failedShown, activity: activity, threadURL: url)
         }
         // Satellites carry their parent thread's orb id.
         for (id, entry) in reads.sorted(by: { $0.key < $1.key }) {
             guard let tracker = trackers[id] else { continue }
-            orbs += T3OrbMapper.subagentOrbs(parent: entry.thread, project: entry.project, items: tracker.currentSubagents, icon: iconFor(entry.project), driverKinds: kinds, failedShown: failedShown, threadURL: url)
+            orbs += T3OrbMapper.subagentOrbs(parent: entry.thread, project: entry.project, items: tracker.currentSubagents, icon: iconFor(entry.project), driverKinds: kinds, failedShown: failedShown, activity: subagentActivity, threadURL: url)
         }
 
         // A parent whose turn ended while its satellites work on stays in orbit to hold them;
@@ -561,11 +573,55 @@ public actor T3ThreadSource: OrbitSource {
         for thread in threads where budget > 0 {
             if let read = failureReads[thread.threadId], read.updatedAt == thread.updatedAt { continue }
             budget -= 1
-            var arguments: [String: Any] = ["threadId": thread.threadId, "view": "activity", "limit": Self.failureTailItems, "maxCharsPerItem": T3ActivityPhrase.readChars, "runLimit": 1]
-            if let count = thread.itemCount, count > Self.failureTailItems { arguments["afterPosition"] = count - Self.failureTailItems - 1 }
-            guard let activity = try? T3Payload.threadActivity(try await client.callTool("t3_thread_read", arguments: arguments)) else { continue }
+            guard let activity = try? await readTail(of: thread.threadId, itemCount: thread.itemCount, items: Self.failureTailItems) else { continue }
             failureReads[thread.threadId] = (thread.updatedAt, thread.providerInstanceId, ProviderLimitText.latestLimit(in: activity.items, runProviders: activity.runProviders))
         }
+    }
+
+    /// Reads what each running provider-native subagent (Claude's Agent tool, Codex subagents) is
+    /// doing from the tail of its own thread, which T3 lists `idle` whatever it does, so the thread
+    /// reads above skip it. Within `maxSubagentReadsPerPoll`, least recently read first; one not read
+    /// this poll keeps what its last read found, and one no longer running is forgotten.
+    private func readSubagentActivity(listed: [T3Thread], now: Date) async {
+        let running = trackers.flatMap { parentId, tracker in
+            tracker.currentSubagents.filter { $0.isSubagent && $0.isWorkActive }.map { (parentId: parentId, item: $0) }
+        }
+        let live = Set(running.map(\.item.orbKey))
+        subagentThreads = subagentThreads.filter { live.contains($0.key) }
+        subagentActivity = subagentActivity.filter { live.contains($0.key) }
+        subagentReadAt = subagentReadAt.filter { live.contains($0.key) }
+        for entry in running {
+            if let thread = T3OrbMapper.subagentThread(for: entry.item, parentThreadId: entry.parentId, among: listed) {
+                subagentThreads[entry.item.orbKey] = thread
+            }
+        }
+
+        let keys = live.filter { subagentThreads[$0] != nil }.sorted {
+            (subagentReadAt[$0] ?? .distantPast, $0) < (subagentReadAt[$1] ?? .distantPast, $1)
+        }
+        var budget = Self.maxSubagentReadsPerPoll
+        for key in keys where budget > 0 {
+            guard var thread = subagentThreads[key] else { continue }
+            budget -= 1
+            guard var tail = try? await readTail(of: thread.threadId, itemCount: thread.itemCount, items: Self.subagentTailItems) else { continue }
+            // The thread grew past the count it was read at: read its real tail once more.
+            if tail.itemCount > (tail.nextPosition ?? -1) + 1, budget > 0,
+               let newer = try? await readTail(of: thread.threadId, itemCount: tail.itemCount, items: Self.subagentTailItems) {
+                budget -= 1
+                tail = newer
+            }
+            thread.itemCount = tail.itemCount
+            subagentThreads[key] = thread
+            if let phrase = T3ActivityPhrase.latest(in: tail.items) { subagentActivity[key] = phrase }
+            subagentReadAt[key] = now
+        }
+    }
+
+    /// The last `items` items of a thread with `itemCount` items (its first items when the count is unknown).
+    private func readTail(of threadId: String, itemCount: Int?, items: Int) async throws -> T3ThreadActivity {
+        var arguments: [String: Any] = ["threadId": threadId, "view": "activity", "limit": items, "maxCharsPerItem": T3ActivityPhrase.readChars, "runLimit": 1]
+        if let count = itemCount, count > items { arguments["afterPosition"] = count - items - 1 }
+        return try T3Payload.threadActivity(try await client.callTool("t3_thread_read", arguments: arguments))
     }
 
     /// Reads threads' timelines within the per-poll budget, least recently read first. A read that
@@ -574,6 +630,7 @@ public actor T3ThreadSource: OrbitSource {
         let live = Set(threads.map(\.threadId))
         trackers = trackers.filter { live.contains($0.key) }
         pendingRequests = pendingRequests.filter { live.contains($0.key) }
+        pendingQuestions = pendingQuestions.filter { live.contains($0.key) }
         lastReadAt = lastReadAt.filter { live.contains($0.key) }
 
         let ordered = threads.sorted {
@@ -583,6 +640,7 @@ public actor T3ThreadSource: OrbitSource {
         for thread in ordered where budget > 0 {
             var tracker = trackers[thread.threadId] ?? T3ActivityTracker()
             tracker.pruneFinished()
+            var readAny = false
             for read in tracker.plannedReads(itemCount: thread.itemCount).prefix(budget) {
                 budget -= 1
                 var arguments: [String: Any] = ["threadId": thread.threadId, "view": "activity", "limit": read.limit, "maxCharsPerItem": T3ActivityPhrase.readChars, "runLimit": 1]
@@ -590,10 +648,20 @@ public actor T3ThreadSource: OrbitSource {
                 guard let activity = try? T3Payload.threadActivity(try await client.callTool("t3_thread_read", arguments: arguments)) else { break }
                 pendingRequests[thread.threadId] = activity.pendingRequestCount
                 tracker.absorb(activity, read: read)
+                readAny = true
             }
+            if readAny { await readPendingQuestions(of: thread.threadId) }
             trackers[thread.threadId] = tracker
             lastReadAt[thread.threadId] = now
         }
+    }
+
+    /// How many of a thread's pending requests are questions for its owner rather than approvals,
+    /// asked only while it has any. A failed ask keeps what the last one found.
+    private func readPendingQuestions(of threadId: String) async {
+        guard (pendingRequests[threadId] ?? 0) > 0 else { pendingQuestions[threadId] = nil; return }
+        guard let ids = try? T3Payload.pendingQuestionIds(try await client.callTool("t3_pending_request_list", arguments: ["threadId": threadId])) else { return }
+        pendingQuestions[threadId] = ids.count
     }
 
     /// Every page of a cursor-paged list, at most 20 pages.

@@ -330,6 +330,12 @@ public enum T3Payload {
         return kinds
     }
 
+    /// `t3_pending_request_list`: the thread's pending questions for its owner. Approvals are not listed.
+    public static func pendingQuestionIds(_ data: Data) throws -> [String] {
+        guard let ids = try jsonObject(data)["requestIds"] as? [String] else { throw MCPError.malformed("no requestIds") }
+        return ids
+    }
+
     public static func environmentId(_ data: Data) throws -> String? {
         try jsonObject(data)["environmentId"] as? String
     }
@@ -355,21 +361,30 @@ public enum T3OrbMapper {
 
     /// One orb per thread whose status puts it in the orbit. Delegated children carry their parent's
     /// orb id. Provider-native subagent threads are skipped: they come from `subagentOrbs`.
-    /// `pendingRequests` maps thread id to its pending request count; a failed thread shows
-    /// only while its orb id is in `failedShown` (see `FailedOrbRetention`).
+    /// `pendingRequests` maps thread id to its pending request count (questions and approvals),
+    /// `pendingQuestions` to how many of those are questions (`t3_pending_request_list`, which
+    /// leaves approvals out); a failed thread shows only while its orb id is in `failedShown`
+    /// (see `FailedOrbRetention`).
     /// `activity` maps thread id to a few words on what it is doing (see `T3ActivityPhrase`).
-    public static func orbs(project: T3Project, threads: [T3Thread], icon: OrbIcon, driverKinds: [String: String] = [:], pendingRequests: [String: Int] = [:], failedShown: Set<String> = [], activity: [String: String] = [:], threadURL: (String) -> String? = { _ in nil }) -> [Orb] {
+    public static func orbs(project: T3Project, threads: [T3Thread], icon: OrbIcon, driverKinds: [String: String] = [:], pendingRequests: [String: Int] = [:], pendingQuestions: [String: Int] = [:], failedShown: Set<String> = [], activity: [String: String] = [:], threadURL: (String) -> String? = { _ in nil }) -> [Orb] {
         threads.compactMap { thread in
             guard !thread.isProviderNativeSubagent,
                   let state = thread.status.orbState(pendingRequests: pendingRequests[thread.threadId] ?? 0) else { return nil }
             if state == .failed, !failedShown.contains(orbId(thread.threadId)) { return nil }
-            return threadOrb(project: project, thread: thread, state: state, icon: icon, driverKinds: driverKinds, activity: activity[thread.threadId], threadURL: threadURL)
+            let waitingFor = state == .waiting ? waitingFor(pendingQuestions: pendingQuestions[thread.threadId] ?? 0) : nil
+            return threadOrb(project: project, thread: thread, state: state, waitingFor: waitingFor, icon: icon, driverKinds: driverKinds, activity: activity[thread.threadId], threadURL: threadURL)
         }
+    }
+
+    /// What a thread with pending requests waits on: its owner's answer if any of them is a
+    /// question (answering it is what moves the thread on), otherwise an approval.
+    public static func waitingFor(pendingQuestions: Int) -> Orb.WaitingFor {
+        pendingQuestions > 0 ? .input : .approval
     }
 
     /// The orb for one thread, in `state`. Its id is the thread's own, whatever run or turn it is
     /// on, so a new message or a status change never makes it a different orb.
-    public static func threadOrb(project: T3Project, thread: T3Thread, state: Orb.State, icon: OrbIcon, driverKinds: [String: String] = [:], activity: String? = nil, threadURL: (String) -> String? = { _ in nil }) -> Orb {
+    public static func threadOrb(project: T3Project, thread: T3Thread, state: Orb.State, waitingFor: Orb.WaitingFor? = nil, icon: OrbIcon, driverKinds: [String: String] = [:], activity: String? = nil, threadURL: (String) -> String? = { _ in nil }) -> Orb {
         Orb(
             id: orbId(thread.threadId),
             parentId: thread.parentThreadId.map(orbId),
@@ -377,6 +392,7 @@ public enum T3OrbMapper {
             projectIcon: icon,
             provider: provider(thread, driverKinds),
             state: state,
+            waitingFor: waitingFor,
             label: thread.title.isEmpty ? project.title : "\(project.title) · \(thread.title)",
             link: threadURL(thread.threadId),
             activity: activity,
@@ -403,8 +419,10 @@ public enum T3OrbMapper {
     }
 
     /// Satellites for the provider-native subagents and workflow agents running inside `parent`,
-    /// from its activity timeline. Each carries the parent thread's orb id.
-    public static func subagentOrbs(parent: T3Thread, project: T3Project, items: [T3TimelineItem], icon: OrbIcon, driverKinds: [String: String] = [:], failedShown: Set<String> = [], threadURL: (String) -> String? = { _ in nil }) -> [Orb] {
+    /// from its activity timeline. Each carries the parent thread's orb id. `activity` maps an
+    /// item's orb key to what its own thread is doing (`subagentThread`); without that, a running
+    /// subagent says what it last reported to its parent (`T3ActivityPhrase.progress`).
+    public static func subagentOrbs(parent: T3Thread, project: T3Project, items: [T3TimelineItem], icon: OrbIcon, driverKinds: [String: String] = [:], failedShown: Set<String> = [], activity: [String: String] = [:], threadURL: (String) -> String? = { _ in nil }) -> [Orb] {
         items.compactMap { item in
             guard item.isSubagent else { return nil }
             let id = orbId(item.orbKey)
@@ -426,9 +444,30 @@ public enum T3OrbMapper {
                 state: state,
                 label: "\(project.title) · \(title.isEmpty ? "subagent" : title)",
                 link: threadURL(parent.threadId),
+                activity: state == .active ? activity[item.orbKey] ?? T3ActivityPhrase.progress(item) : nil,
                 activeAt: item.updatedAt.map { ($0.timeIntervalSince1970 * 1000).rounded() / 1000 }
             )
         }
+    }
+
+    /// The thread T3 keeps for a provider-native subagent item: it is listed `idle` whatever it
+    /// does, but its timeline is the subagent's own work. It is the `parentThreadId` child whose id
+    /// ends in the item node's native id (Claude's task id, Codex's thread id); failing that, the
+    /// one such child with the item's title.
+    public static func subagentThread(for item: T3TimelineItem, parentThreadId: String, among threads: [T3Thread]) -> T3Thread? {
+        let children = threads.filter { $0.isProviderNativeSubagent && $0.parentThreadId == parentThreadId }
+        let key = nativeKey(item.orbKey)
+        if let match = children.first(where: { nativeKey($0.threadId) == key }) { return match }
+        let title = item.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let titled = children.filter { !title.isEmpty && $0.title == title }
+        return titled.count == 1 ? titled[0] : nil
+    }
+
+    /// The provider's own id at the end of a node or thread id: past its last `:` and any `%3A`
+    /// in that segment. `node:…:native-item:task%3Aa5b0` and `thread:…%3Apending%253A…%3Aa5b0` -> `a5b0`.
+    static func nativeKey(_ id: String) -> String {
+        let segment = id.split(separator: ":").last.map(String.init) ?? id
+        return segment.components(separatedBy: "%3A").last ?? segment
     }
 
     public static func orbId(_ key: String) -> String { idPrefix + key }

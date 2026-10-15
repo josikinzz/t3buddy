@@ -65,7 +65,7 @@
   .orb[data-pace="quiet"] .orb-face { animation: breathe 3.2s ease-in-out infinite; }
   .orb[data-pace="stale"] { filter: brightness(calc((.74 + .26 * var(--lit, 1)) * (1 - .38 * var(--stale, 0)))) saturate(calc(1 - .5 * var(--stale, 0))); }
   @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.055); } }
-  /* Waiting on the owner: a "!" badge (not colour alone). */
+  /* Waiting on the owner: a "?" (a question) or "!" badge (not colour alone). */
   .orb-alert { position: absolute; z-index: 4; right: calc(var(--orb, 36px) * -.08); top: calc(var(--orb, 36px) * -.1); width: calc(var(--orb, 36px) * .42); height: calc(var(--orb, 36px) * .42);
     border-radius: 50%; display: none; align-items: center; justify-content: center; color: #1c1917;
     background: radial-gradient(circle at 35% 30%, #fde68a 0, #f59e0b 55%, #b45309 100%);

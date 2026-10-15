@@ -15,3 +15,6 @@ outputs/
 # macOS and editor leftovers
 .DS_Store
 *.bak-*
+
+# Agent worktrees
+.claude/

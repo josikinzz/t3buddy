@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Every push is scanned the way scripts/publish.sh scans a publish: noreply identity only,
+# no rewriting public history, no private terms. Enabled by: git config core.hooksPath .githooks
+set -euo pipefail
+ROOT="$(git rev-parse --show-toplevel)"
+ZERO=0000000000000000000000000000000000000000
+while read -r _ local_sha _ remote_sha; do
+  [ "$local_sha" = "$ZERO" ] && continue
+  base="$remote_sha"; [ "$base" = "$ZERO" ] && base=""
+  "$ROOT/scripts/publish.sh" --check "$base" "$local_sha"
+done

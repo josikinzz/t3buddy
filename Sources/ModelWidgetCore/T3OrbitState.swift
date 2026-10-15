@@ -224,6 +224,40 @@ public enum T3ActivityPhrase {
         }
     }
 
+    /// What the newest item with something to say says, for a thread read just by its tail.
+    public static func latest(in items: [T3TimelineItem]) -> String? {
+        items.sorted { $0.position < $1.position }.compactMap(phrase).last
+    }
+
+    /// What a running subagent last reported to its parent: T3 shows its latest progress as its
+    /// item's text ("Running Check the build", "Reading /a/b/pet.js"), and its task (the title
+    /// again, or a long prompt) before it has reported any. nil for a task, or once it is done.
+    public static func progress(_ item: T3TimelineItem) -> String? {
+        guard item.isWorkActive else { return nil }
+        let text = (item.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let title = item.title?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !text.isEmpty, text != title, text.count < readChars, !text.contains(where: \.isNewline) else { return nil }
+        var words = text.split(separator: " ", maxSplits: 1).map(String.init)
+        words[0] = lowered(words[0])
+        if words.count > 1 {
+            if words[1].contains("/"), !words[1].contains(" ") {
+                words[1] = (words[1] as NSString).lastPathComponent
+            } else if words[0].hasSuffix("ing") {
+                // "Running Check the build": the description is a sentence of its own.
+                var rest = words[1].split(separator: " ", maxSplits: 1).map(String.init)
+                rest[0] = lowered(rest[0])
+                words[1] = rest.joined(separator: " ")
+            }
+        }
+        return clip(words.joined(separator: " "))
+    }
+
+    /// "Running" -> "running"; "README" and "SwiftUI" keep their capitals.
+    private static func lowered(_ word: String) -> String {
+        guard word.range(of: "^[A-Z][a-z]+$", options: .regularExpression) != nil else { return word }
+        return word.lowercased()
+    }
+
     /// "Read /a/b/pet.js" -> "reading pet.js"; an unknown tool keeps its title, lowercased.
     static func tool(_ title: String) -> String {
         let parts = title.split(separator: " ", maxSplits: 1).map(String.init)
