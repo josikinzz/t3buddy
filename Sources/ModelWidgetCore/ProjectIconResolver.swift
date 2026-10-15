@@ -41,7 +41,7 @@ public enum ProjectMonogram {
     ]
 
     /// First letter of the first word, then the first digit after it, else the first letter
-    /// of the last word, else the first word's last letter. `semantic-space` → `SS`.
+    /// of the last word, else the first word's last letter. `data-pipeline` → `DP`.
     public static func text(for name: String) -> String {
         let words = wordRuns(normalized(name))
         guard let first = words.first, let lead = first.first else { return "PR" }

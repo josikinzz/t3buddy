@@ -29,3 +29,7 @@ To regenerate `grokBot.png`: `iconutil -c iconset "/Applications/Grok Bot.app/Co
 take `icon_128x128@2x.png`, find the squircle's opaque bounds (204 px square at 26,26), trim 3 % of that side from
 each edge (a centred 192 px square, which drops the transparent margin and the squircle's rim so the art fills a
 circle), and scale it to 128 × 128 with CoreGraphics. The artwork is otherwise unchanged; the page clips it round.
+
+## T3boii character
+
+`../T3-rigged.glb` is the original T3boii character, not a provider mark: Design by maria_rcks ([@maria_rcks](https://x.com/maria_rcks) on X), model by Meshy, animated by Sol 6.1 and Opus 5.5.

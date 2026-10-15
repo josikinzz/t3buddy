@@ -7,5 +7,6 @@ Files copied unchanged, paths kept so relative imports resolve:
   three/examples/jsm/utils/BufferGeometryUtils.js, three/examples/jsm/utils/SkeletonUtils.js
 The page maps the bare "three" import to three/build/three.module.js with an import map.
 
-../T3-rigged.glb: downloaded once from https://t3-dance-sand.vercel.app/T3-rigged.glb on 2026-10-14
+../T3-rigged.glb: the original T3boii character. Design by maria_rcks (@maria_rcks on X), model by Meshy,
+  animated by Sol 6.1 and Opus 5.5
   sha256 b70a3b709576c458461d4ef17117a93b047a064ce6ca287bc6a8c48c51915116

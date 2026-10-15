@@ -1086,7 +1086,7 @@ function makeCanvas(layer) {
 /// ?fake=N&churn: also shift them every few seconds to watch spawn, swallow and state changes.
 export function fakeSnapshot(n, seed = 0) {
   const providers = ['codex', 'claudeAgent', 'grok', 'antigravity', 'cursor', 'opencode', 'pi', 'kimi', 'grokBot', 'somethingNew'];
-  const names = ['semantic-space', 'dosewiki-admin', 'bodhi-blocks', 'widgets', 'dmtx-app', 'notes-wiki', 'receptor-explorer', 'jakki-srs'];
+  const names = ['data-pipeline', 'docs-site', 'game-engine', 'widgets', 'demo-app', 'notes', 'api-server', 'portfolio'];
   const colors = ['#3b82f6', '#a855f7', '#10b981', '#f97316', '#ec4899', '#14b8a6', '#eab308', '#6366f1'];
   const orbs = [];
   const icon = (j) => {

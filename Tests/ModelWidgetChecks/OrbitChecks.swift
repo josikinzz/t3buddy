@@ -7,7 +7,7 @@ extension ModelWidgetChecks {
         // MARK: ProjectIconResolver
 
         suite.check("Project icon resolver finds public/favicon.webp in a fixture folder") {
-            try withProject("bodhi-blocks", files: ["public/favicon.webp": Data([0x52, 0x49, 0x46, 0x46, 0x01])]) { root in
+            try withProject("game-engine", files: ["public/favicon.webp": Data([0x52, 0x49, 0x46, 0x46, 0x01])]) { root in
                 let resolver = ProjectIconResolver()
                 try expectEqual(resolver.iconPath(workspaceRoot: root), root + "/public/favicon.webp")
                 let icon = resolver.resolve(workspaceRoot: root)
@@ -17,26 +17,26 @@ extension ModelWidgetChecks {
         }
 
         suite.check("Project icon resolver gives a folder with no icon a two-letter monogram") {
-            try withProject("semantic-space", files: ["README.md": Data("hi".utf8)]) { root in
+            try withProject("data-pipeline", files: ["README.md": Data("hi".utf8)]) { root in
                 let icon = ProjectIconResolver().resolve(workspaceRoot: root)
                 try expectEqual(icon.kind, .monogram)
-                try expectEqual(icon.text, "SS")
+                try expectEqual(icon.text, "DP")
                 // T3's colour hash over the name; the same name always gets the same colour.
-                try expectEqual(icon.color, ProjectMonogram.hex(forColorName: ProjectMonogram.colorName(for: "semantic-space")))
+                try expectEqual(icon.color, ProjectMonogram.hex(forColorName: ProjectMonogram.colorName(for: "data-pipeline")))
                 try expectEqual(ProjectIconResolver().resolve(workspaceRoot: root).color, icon.color)
             }
         }
 
         suite.check("Project monogram follows T3's letter rules") {
-            try expectEqual(ProjectMonogram.text(for: "semantic-space"), "SS")
+            try expectEqual(ProjectMonogram.text(for: "data-pipeline"), "DP")
             try expectEqual(ProjectMonogram.text(for: "widgets"), "WS")
-            try expectEqual(ProjectMonogram.text(for: "dmtx-app"), "DA")
+            try expectEqual(ProjectMonogram.text(for: "demo-app"), "DA")
             try expectEqual(ProjectMonogram.text(for: "web3 tools"), "W3")
             try expectEqual(ProjectMonogram.text(for: "  "), "PR")
         }
 
         suite.check("Project icon resolver lets the manual favicon and icon win") {
-            try withProject("dosewiki-admin", files: [
+            try withProject("docs-site", files: [
                 "public/favicon.svg": Data("<svg xmlns='http://www.w3.org/2000/svg'/>".utf8),
                 "brand/mark.png": Data([0x89, 0x50, 0x4E, 0x47])
             ]) { root in
@@ -54,7 +54,7 @@ extension ModelWidgetChecks {
 
         suite.check("Project icon resolver resolves index.html rel=icon against public/") {
             let html = #"<html><head><link rel="stylesheet" href="/a.css"><link href="/brand/icon.png?v=2" rel="icon" type="image/png"></head></html>"#
-            try withProject("dmtx-app", files: ["index.html": Data(html.utf8), "public/brand/icon.png": Data([0x89, 0x50])]) { root in
+            try withProject("demo-app", files: ["index.html": Data(html.utf8), "public/brand/icon.png": Data([0x89, 0x50])]) { root in
                 try expectEqual(ProjectIconResolver().iconPath(workspaceRoot: root), root + "/public/brand/icon.png")
             }
             let route = #"head: () => ({ links: [{ rel: "stylesheet", href: appCss }, { rel: 'icon', href: '/logo.svg' }] })"#
@@ -142,8 +142,8 @@ extension ModelWidgetChecks {
 
         suite.check("T3 payload decodes projects with favicon and icon overrides") {
             let page = try T3Payload.projects(Data(projectListPayload.utf8))
-            try expectEqual(page.items.map(\.title), ["dosewiki-admin", "No project"])
-            try expectEqual(page.items[0].faviconPath, "/Users/tester/Projects/dosewiki-admin/public/favicon.svg")
+            try expectEqual(page.items.map(\.title), ["docs-site", "No project"])
+            try expectEqual(page.items[0].faviconPath, "/Users/tester/Projects/docs-site/public/favicon.svg")
             try expectEqual(page.items[1].projectIcon, .lucide(name: "message-square-dashed", color: "gray"))
             try expectEqual(try T3Payload.driverKinds(Data(#"{"providers":[{"providerInstanceId":"codex-work","driverKind":"codex"}]}"#.utf8)), ["codex-work": "codex"])
         }
@@ -158,7 +158,7 @@ extension ModelWidgetChecks {
                 try expectEqual(T3ThreadStatus(rawValue: status).orbState(), nil)
             }
             let threads = try T3Payload.threads(try MCPWire.toolPayload(try MCPWire.response(id: 4, body: Data(threadListJSONResponse.utf8), contentType: "application/json"))).items
-            let project = T3Project(id: "p", title: "dosewiki-admin", workspaceRoot: "/tmp")
+            let project = T3Project(id: "p", title: "docs-site", workspaceRoot: "/tmp")
             let origin = URL(string: "http://127.0.0.1:3773")!
             let orbs = T3OrbMapper.orbs(project: project, threads: threads, icon: .monogram("DA", color: "#000000"), driverKinds: ["codex-work": "codex"]) {
                 T3OrbMapper.threadURL(origin: origin, environmentId: "env", threadId: $0)
@@ -167,7 +167,7 @@ extension ModelWidgetChecks {
             try expectEqual(orbs.map(\.parentId), [nil, "t3:af2196b9"])
             try expectEqual(orbs.map(\.provider), ["claudeAgent", "codex"])
             try expectEqual(orbs.map(\.state), [.active, .active])
-            try expectEqual(orbs[0].label, "dosewiki-admin · slop unit tests")
+            try expectEqual(orbs[0].label, "docs-site · slop unit tests")
             try expectEqual(orbs[0].link, "http://127.0.0.1:3773/env/af2196b9")
             try expectEqual(T3OrbMapper.threadURL(origin: origin, environmentId: "env", threadId: "thread:a%3Ab/c"), "http://127.0.0.1:3773/env/thread:a%253Ab%2Fc")
         }
@@ -258,7 +258,7 @@ extension ModelWidgetChecks {
 /// Trimmed from a real `t3_thread_list` response (T3 Code 0.0.46-nightly.20261014.3118).
 private let threadListJSONResponse = #"{"jsonrpc":"2.0","id":4,"result":{"content":[{"type":"text","text":"{\"projectId\":\"p\",\"currentThreadId\":null,\"threads\":[{\"threadId\":\"af2196b9\",\"title\":\"slop unit tests\",\"status\":\"running\",\"providerInstanceId\":\"claudeAgent\",\"model\":\"claude-opus-5-5\",\"parentThreadId\":null,\"relationshipToParent\":null},{\"threadId\":\"sub-1\",\"title\":\"\",\"status\":\"waiting\",\"providerInstanceId\":\"codex-work\",\"parentThreadId\":\"af2196b9\",\"relationshipToParent\":\"subagent\"},{\"threadId\":\"done-1\",\"title\":\"old\",\"status\":\"completed\",\"providerInstanceId\":\"codex\",\"parentThreadId\":null}],\"nextCursor\":null,\"total\":3}"}],"isError":false}}"#
 
-private let projectListPayload = #"{"projects":[{"id":"2720da92","title":"dosewiki-admin","workspaceRoot":"/Users/tester/Projects/dosewiki-admin","faviconPath":"/Users/tester/Projects/dosewiki-admin/public/favicon.svg","projectIcon":null,"deletedAt":null},{"id":"bec5b46b","title":"No project","workspaceRoot":"/Users/tester/.t3/scratch","faviconPath":null,"projectIcon":{"kind":"lucide","name":"message-square-dashed","color":"gray"}},{"id":"gone","title":"Gone","workspaceRoot":"/x","deletedAt":"2026-01-01T00:00:00Z"}],"nextCursor":null}"#
+private let projectListPayload = #"{"projects":[{"id":"2720da92","title":"docs-site","workspaceRoot":"/Users/tester/Projects/docs-site","faviconPath":"/Users/tester/Projects/docs-site/public/favicon.svg","projectIcon":null,"deletedAt":null},{"id":"bec5b46b","title":"No project","workspaceRoot":"/Users/tester/.t3/scratch","faviconPath":null,"projectIcon":{"kind":"lucide","name":"message-square-dashed","color":"gray"}},{"id":"gone","title":"Gone","workspaceRoot":"/x","deletedAt":"2026-01-01T00:00:00Z"}],"nextCursor":null}"#
 
 private func orb(_ id: String, source: Orb.Source = .t3) -> Orb {
     Orb(id: id, source: source, projectIcon: .monogram("AB", color: "#123456"), provider: "codex")

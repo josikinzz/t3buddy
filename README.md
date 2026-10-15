@@ -169,6 +169,6 @@ PRODUCT.md                who it is for and what each part does
 The code is MIT licensed (see [LICENSE](LICENSE)). Third-party assets keep their own terms and are not covered by it:
 
 - three.js, vendored under `Resources/Pet/vendor/three`, is MIT licensed (its own `LICENSE` is alongside it).
-- The T3boii 3D model (`Resources/Pet/T3-rigged.glb`) comes from the T3 community dance page (t3-dance-sand.vercel.app).
+- The T3boii character (`Resources/Pet/T3-rigged.glb`) is original: Design by maria_rcks ([@maria_rcks](https://x.com/maria_rcks) on X), model by Meshy, animated by Sol 6.1 and Opus 5.5.
 - Provider logos under `Resources/Pet/badges` (Claude, Codex, Grok Bot and others) belong to their owners and are used only to identify each provider.
 - The sound effects under `Resources/Pet/sfx` were generated with ElevenLabs.

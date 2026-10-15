@@ -8,12 +8,12 @@ extension ModelWidgetChecks {
 
         await suite.check("process label names a generic node process by its project folder") {
             try expectEqual(
-                ProcessLabel.label(name: "node", cwd: "/Users/tester/Projects/dosewiki-admin", homeDirectory: home),
-                "node · dosewiki-admin"
+                ProcessLabel.label(name: "node", cwd: "/Users/tester/Projects/docs-site", homeDirectory: home),
+                "node · docs-site"
             )
             try expectEqual(
-                ProcessLabel.label(name: "node", cwd: "/Users/tester/Projects/dosewiki-admin/", homeDirectory: home),
-                "node · dosewiki-admin"
+                ProcessLabel.label(name: "node", cwd: "/Users/tester/Projects/docs-site/", homeDirectory: home),
+                "node · docs-site"
             )
         }
 
@@ -53,7 +53,7 @@ extension ModelWidgetChecks {
         await suite.check("process panel rows show generic processes by project and keep app names") { @MainActor in
             let viewModel = ProcessHUDViewModel(
                 processSampler: FixedProcessSampler(processes: [
-                    RunningProcess(processID: 12, name: "node", workingDirectory: "/Users/tester/Projects/dosewiki-admin", residentMemoryBytes: 300_000_000),
+                    RunningProcess(processID: 12, name: "node", workingDirectory: "/Users/tester/Projects/docs-site", residentMemoryBytes: 300_000_000),
                     RunningProcess(processID: 34, name: "Google Chrome", workingDirectory: "/Users/tester/Projects/widgets", residentMemoryBytes: 200_000_000),
                     RunningProcess(processID: 56, name: "codex", residentMemoryBytes: 100_000_000)
                 ]),
@@ -65,9 +65,9 @@ extension ModelWidgetChecks {
 
             let presentation = ProcessPanelPresentation.make(from: viewModel)
 
-            try expectEqual(presentation.processRows.map(\.title), ["node · dosewiki-admin", "Google Chrome", "codex"])
-            try expectEqual(presentation.proportionSegments.first?.title, "node · dosewiki-admin")
-            try expectEqual(presentation.processRows[0].accessibilityLabel, "node · dosewiki-admin, 30% of unified memory")
+            try expectEqual(presentation.processRows.map(\.title), ["node · docs-site", "Google Chrome", "codex"])
+            try expectEqual(presentation.proportionSegments.first?.title, "node · docs-site")
+            try expectEqual(presentation.processRows[0].accessibilityLabel, "node · docs-site, 30% of unified memory")
             try expectEqual(presentation.processRows[0].forceQuitButton.title, "Force Quit")
             try expectEqual(presentation.processRows[0].forceQuitButton.isEnabled, true)
         }

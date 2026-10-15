@@ -104,7 +104,7 @@ public final class ProcessHUDViewModel: ObservableObject {
 }
 
 extension RunningProcess {
-    /// Row label for the process memory card, e.g. `node · dosewiki-admin`.
+    /// Row label for the process memory card, e.g. `node · docs-site`.
     public var displayLabel: String {
         ProcessLabel.label(name: name, cwd: workingDirectory)
     }
