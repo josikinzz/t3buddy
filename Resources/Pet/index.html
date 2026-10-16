@@ -78,11 +78,16 @@
     50% { box-shadow: 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42), 0 0 calc(var(--orb, 36px) * .55) calc(var(--orb, 36px) * .08) rgba(255, 186, 52, .9); }
   }
   @keyframes alert-bob { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-12%) scale(1.08); } }
-  /* Failed: the sphere cracks and flushes red until you look at it; seen, it greys and sinks. */
+  /* Failed: the sphere turns to red glass, its icon and logo tinted red, and cracks, until you look at it; seen, it greys and sinks.
+     One dying at a limit is left to its dark-glass death. */
   .orb-crack { position: absolute; inset: 0; z-index: 2; display: none; pointer-events: none; border-radius: 50%; overflow: hidden; }
   .orb-crack svg { display: block; width: 100%; height: 100%; }
   .orb[data-state="failed"] .orb-crack { display: block; }
-  .orb[data-state="failed"] .orb-face { filter: sepia(.5) saturate(2.4) hue-rotate(-38deg) brightness(.82); box-shadow: 0 0 calc(var(--orb, 36px) * .35) rgba(255, 60, 70, .55), 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42); }
+  .orb[data-state="failed"]:not([data-dying]) .orb-face { background: radial-gradient(circle at 34% 30%, rgba(255, 146, 154, .94) 0, rgba(222, 36, 56, .92) 46%, rgba(108, 6, 22, .97) 100%);
+    box-shadow: 0 0 calc(var(--orb, 36px) * .4) rgba(255, 40, 60, .62), 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42); }
+  .orb[data-state="failed"]:not([data-dying]) .orb-face .orb-icon, .orb[data-state="failed"]:not([data-dying]) .orb-face .orb-badge { filter: grayscale(1) brightness(.62) sepia(1) hue-rotate(-42deg) saturate(3.4); }
+  .orb[data-state="failed"]:not([data-dying]) .orb-face.monogram span { color: #ffd9dc; }
+  .orb[data-state="failed"]:not([data-dying]) .orb-face.ringed::before { box-shadow: inset 0 0 0 calc(var(--orb, 36px) * .07) #7a0a1c; }
   .orb[data-state="failed"][data-seen] .orb-face, .orb[data-state="failed"][data-seen] .orb-badge { filter: grayscale(1) brightness(.72) contrast(.9); box-shadow: none; }
   .orb[data-state="failed"][data-seen] .orb-crack { opacity: .5; }
   .orb.cracking .orb-face, .orb.cracking .orb-crack { animation: crack-jolt .6s cubic-bezier(.3, .7, .4, 1); }

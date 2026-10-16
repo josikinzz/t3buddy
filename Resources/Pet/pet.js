@@ -1120,6 +1120,8 @@ const debug = { lid: null, sleepAfter: null, pucker: null, smirk: null, frown: n
 // cries and its orbs dissolve; the real orbit comes back after (demo.js, scripts/demo.sh limit).
 debug.limit = (provider) => limitShow(provider);
 let floatPx = 0, swellNow = 1;
+// Phases advance by dt, so a change of pace (power, sleep, sadness) speeds or slows the sway instead of sweeping it.
+const sway = { bob: 0, breath: 0 };
 
 function pose(t, dt) {
   for (const [name, b] of Object.entries(bones)) { b.position.copy(rest[name].p); b.quaternion.copy(rest[name].q); }
@@ -1223,7 +1225,8 @@ function pose(t, dt) {
   }
 
   // Float: a slow bob with a little sway, as if hanging in water. Powered up, he rises and bobs more.
-  const bob = amp * (0.035 + 0.03 * p) * (1 - 0.6 * S) * (1 - 0.45 * sad) * Math.sin(t * TAU / (3.8 - 0.8 * p + 2 * S + 0.8 * daylight.night + 1.4 * sad));
+  sway.bob += dt * TAU / (3.8 - 0.8 * p + 2 * S + 0.8 * daylight.night + 1.4 * sad);
+  const bob = amp * (0.035 + 0.03 * p) * (1 - 0.6 * S) * (1 - 0.45 * sad) * Math.sin(sway.bob);
   const holdHop = amp * 0.045 * H * Math.abs(Math.sin(t * Math.PI / HOLD_BOB_S));
   rig.position.y = bob + 0.12 * p - 0.045 * busy - 0.04 * S + 0.06 * startle * amp + 0.08 * D * Math.abs(Math.sin(beat / 2))
     + holdHop + 0.1 * hop + 0.03 * flinch + 0.05 * spinning - 0.07 * sad + 0.022 * sob;
@@ -1244,7 +1247,8 @@ function pose(t, dt) {
 
   // Breathing: chest lifts and the head nods back a touch. Concentrating, he tips his head back.
   // Asleep, he breathes slow and deep and his head droops.
-  const breath = amp * (1 + 0.9 * S) * Math.sin(t * TAU / (4.2 - 1.2 * p - 0.8 * busy + 2.2 * S));
+  sway.breath += dt * TAU / (4.2 - 1.2 * p - 0.8 * busy + 2.2 * S);
+  const breath = amp * (1 + 0.9 * S) * Math.sin(sway.breath);
   add('Bone_014', -0.012 * breath);
   add('Bone_013', -0.018 * breath);
   add('Bone_012', 0.010 * breath - 0.06 * psy + 0.05 * gulpPulse + 0.15 * S - 0.16 * stretch - 0.06 * flinch + 0.13 * sad + 0.05 * sob, 0.02 * Math.sin(t * 0.37));
