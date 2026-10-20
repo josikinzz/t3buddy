@@ -15,7 +15,7 @@ Users are likely running coding agents in T3 Code and local models (Bonsai, Magn
 Local Model Widget is a companion heads-up display for T3 Code: one transparent desktop-level dashboard of compact cards plus a desk pet. The cards are:
 
 - **Local Models:** the model currently loaded on Bonsai, Magnitude or Ollama, with an Unload button.
-- **Subscription Usage:** plan, 5-hour, weekly and monthly quota use for Claude, Codex and Kimi accounts found on this machine.
+- **Subscription Usage:** plan, 5-hour, weekly and monthly quota use for Claude, Codex and Kimi accounts found on this machine, and Grok Bot's own last weekly reading with how old it is (marked stale past Grok Bot's expiry, and no percent once its week has reset).
 - **Process Memory:** unified memory use and the heaviest processes, each with a Force Quit action.
 - **Tokens:** today's token total and a 7-day per-provider graph read from local Claude Code, Codex and Kimi session logs.
 
@@ -38,7 +38,7 @@ Avoid public-product framing such as marketing copy, onboarding tours, feature e
 Two parts of the desktop dashboard break the anti-references above on purpose, because the owner asked for them. DESIGN.md documents their limits.
 
 - **Today's token total** is one large numeral on the Tokens card, so it reads from across the room.
-- **T3boii,** the desk pet, floats freely with no box and shows each active agent as an orb on a halo around him. He shows agent activity through his own body: spawning, sucking in finished agents, dancing when they are all done, powering up as more agents run, holding out a thread that needs you, frowning at a cracked orb when a thread fails, with what each thread is doing trailing behind its orb in faint glowing words. His eyes follow the mouse and his agents; left alone, he fidgets, yawns and falls asleep. He can be petted, shaken and spun. His motion idles at a low frame rate, pauses when covered or asleep, and honours Reduce Motion.
+- **T3boii,** the desk pet, floats freely with no box and shows each active agent as an orb on a halo around him. He shows agent activity through his own body: spawning, sucking in finished agents, dancing when they are all done, powering up as more agents run, a floating question mark for a thread that needs you, frowning at a cracked orb when a thread fails, with what each thread is doing trailing behind its orb in faint glowing words. His eyes follow the mouse and his agents; left alone, he fidgets, yawns and falls asleep. He can be petted, shaken and spun. His motion idles at a low frame rate, pauses when covered or asleep, and honours Reduce Motion.
 
 ## Design Principles
 

@@ -1,8 +1,6 @@
 import Foundation
 import ModelWidgetCore
 
-/// What the local model card says: the loaded model and its host, or that nothing is loaded,
-/// and whether it offers Unload.
 public struct LocalModelCardPresentation: Equatable {
     public struct Loaded: Equatable {
         public let name: String

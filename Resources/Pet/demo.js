@@ -13,8 +13,9 @@
 //
 // The arc: asleep (Zs, drool, a drip) -> woken with a start and a stretch -> threads glow out of
 // his forehead, a few, then more, with subagents and activity trails; now and then one is
-// swallowed -> one waits on you (held out, amber) -> one fails (flinch, cracked red orb, frown)
-// and is retried -> 20+ at once: eyes white, light pouring from his mouth -> Codex hits its usage
+// swallowed -> one waits on you (it floats beside his head as the dot of a 3D question mark) ->
+// one fails (flinch, a chipped red orb sputtering in the worry zone, frown) and is retried (a beam
+// from his T3 mends it and it flies home) -> 20+ at once: eyes white, light pouring from his mouth -> Codex hits its usage
 // limit: he cries, and its threads die, dissolving under its logo -> the limit clears ->
 // swallowed back in waves -> his all-done dance.
 //
@@ -124,8 +125,6 @@ function step(s) {
   if (s >= END_S) stop();
 }
 
-// --------------------------------------------------------------- threads
-
 /// Up to 12 real projects, image faces first so the orbit looks varied, then monograms.
 function pickProjects(payload, snapshot) {
   let list = Array.isArray(payload.projects) ? payload.projects.filter((p) => p && p.icon) : [];
@@ -177,7 +176,7 @@ function drop(...ids) {
   }
   push();
 }
-function setState(id, state) { const t = run.threads.get(`demo:${id}`); if (t) t.state = state; push(); }
+function setState(id, state, extra = {}) { const t = run.threads.get(`demo:${id}`); if (t) Object.assign(t, { waitingFor: undefined }, extra, { state }); push(); }
 
 /// A few working threads move on to their next activity, so the trails read as live work.
 function moveOn() {
@@ -276,10 +275,11 @@ const BEATS = [
   [14.3, () => drop('b')],
   [15.7, () => add(thread('e', 4, 'codex', 4), thread('f', 5, 'claudeAgent', 5))],
   [16.3, () => add(sub('e1', 'e', 'opencode', 1))],
-  // One waits on you: he holds it out, amber, "needs you"; then it is answered.
-  [16.9, () => setState('c', 'waiting')],
+  // One waits on you: it becomes the dot of a floating question mark, "needs you"; then it is answered.
+  [16.9, () => setState('c', 'waiting', { waitingFor: 'input' })],
   [19.2, () => setState('c', 'active')],
-  // One fails: he flinches, its orb cracks red, he frowns at it; then it is retried.
+  // One fails: he flinches, its orb cracks red and goes to the worry zone, he frowns at it; then it
+  // is retried and mended.
   [19.6, () => setState('e', 'failed')],
   [20.6, () => add(thread('h', 6, 'codex', 6), thread('i', 7, 'opencode', 7))],
   [22.1, () => setState('e', 'active')],

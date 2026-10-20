@@ -11,6 +11,7 @@ let package = Package(
         .library(name: "ModelWidgetCore", targets: ["ModelWidgetCore"]),
         .library(name: "LocalModelWidgetPanel", targets: ["LocalModelWidgetPanel"]),
         .executable(name: "LocalModelWidget", targets: ["LocalModelWidget"]),
+        .executable(name: "t3boii-feed", targets: ["T3boiiFeed"]),
         .executable(name: "ModelWidgetChecks", targets: ["ModelWidgetChecks"])
     ],
     targets: [
@@ -22,6 +23,10 @@ let package = Package(
         .executableTarget(
             name: "LocalModelWidget",
             dependencies: ["ModelWidgetCore", "LocalModelWidgetPanel"]
+        ),
+        .executableTarget(
+            name: "T3boiiFeed",
+            dependencies: ["ModelWidgetCore"]
         ),
         .executableTarget(
             name: "ModelWidgetChecks",

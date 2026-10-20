@@ -56,7 +56,6 @@ public struct FailedOrbRetention: Sendable {
                 expired.insert(candidate.id)
             }
         }
-        // A failure that left T3's failed list stops being tracked.
         let failedIds = Set(failed.map(\.id))
         firstSeenFailed = firstSeenFailed.filter { failedIds.contains($0.key) }
         lastActive = activeIds
@@ -105,6 +104,11 @@ public struct T3ActivityTracker: Sendable {
     /// The provider refused the thread's latest work for a rate or usage limit, and nothing has
     /// happened in it since (`ProviderLimitText.latestLimit`).
     public private(set) var limit: T3LimitItem?
+    /// Messages that arrived since the poll began, past what the first read found, oldest first.
+    public private(set) var arrivals: [T3TimelineItem] = []
+    /// A read has reached the end of the thread: anything after it is new. Until then, a partly
+    /// read history (the per-poll budget cuts a bootstrap short) is not news.
+    public private(set) var caughtUp = false
     private var misses: [String: Int] = [:]
 
     public init() {}
@@ -140,6 +144,11 @@ public struct T3ActivityTracker: Sendable {
     /// Takes in one read's page. Call once per planned read, in order.
     public mutating func absorb(_ activity: T3ThreadActivity, read: Read) {
         var seen: Set<String> = []
+        if caughtUp, let scanned = scannedThrough {
+            for item in activity.items where item.type == "user_message" && item.position > scanned && !arrivals.contains(where: { $0.itemId == item.itemId }) {
+                arrivals.append(item)
+            }
+        }
         for item in activity.items where item.position >= (latest?.position ?? -1) {
             guard let phrase = T3ActivityPhrase.phrase(item) else { continue }
             latest = item
@@ -171,10 +180,12 @@ public struct T3ActivityTracker: Sendable {
             // An empty thread (or an empty tail): start after whatever exists.
             scannedThrough = activity.itemCount - 1
         }
+        if !activity.hasMore, (scannedThrough ?? -1) >= activity.itemCount - 1 { caughtUp = true }
     }
 
     /// Forgets subagents that finished on an earlier poll; call at the start of each poll.
     public mutating func pruneFinished() {
+        arrivals = []
         subagents = subagents.filter { $0.value.isWorkActive }
         misses = misses.filter { subagents[$0.key] != nil }
     }

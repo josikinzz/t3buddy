@@ -124,7 +124,7 @@ extension ModelWidgetChecks {
             try fixture.writeDaemon(inflight: 0)
             let counter = NoticeCounter()
             let source = GrokOrbitSource(persistenceFolder: fixture.persistence, daemonState: fixture.daemon, isAppRunning: { true }, notice: counter.add)
-            for _ in 0..<3 { try expectEqual(await source.orbs(now: now).map(\.id), ["grok:a1"]) }
+            for _ in 0..<3 { try expectEqual(await source.orbs(now: now)?.map(\.id), ["grok:a1"]) }
             try expectEqual(counter.count, 1)
 
             let cache = GrokAvatarCache()
@@ -218,7 +218,7 @@ extension ModelWidgetChecks {
             let closed = GrokOrbitSource(persistenceFolder: fixture.persistence, daemonState: fixture.daemon, isAppRunning: { false })
             try expectEqual(await closed.orbs(now: now), [])
             let open = GrokOrbitSource(persistenceFolder: fixture.persistence, daemonState: fixture.daemon, isAppRunning: { true })
-            try expectEqual(await open.orbs(now: now).map(\.id), ["grok:a1"])
+            try expectEqual(await open.orbs(now: now)?.map(\.id), ["grok:a1"])
         }
     }
 }

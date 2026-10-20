@@ -21,10 +21,6 @@ public final class OllamaClient: ModelProvider {
         try await wireClient.loadedModels()
     }
 
-    public func loadModel(named name: String) async throws {
-        try await wireClient.loadModel(named: name)
-    }
-
     public func unloadModel(named name: String) async throws {
         try await wireClient.unloadModel(named: name)
     }

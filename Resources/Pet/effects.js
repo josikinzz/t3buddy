@@ -6,10 +6,22 @@
 //   drool     a glassy strand from the corner of his mouth, and the drops that fall from it
 //   vortex    while he sucks an orb in: translucent spiral tubes of air streaming into his lips
 //   heaven    god rays and a warm glare pouring out of his mouth at full power
-//   rings     glowing tori that roll off the T3 on his forehead when an agent spawns
+//   ripples   rings of psychic light that lift off the T3 on his forehead when an agent spawns
 //   stars     a dizzy halo of little stars after he has been spun round
 //   shards    dark glossy chips an orb crumbles into when its provider hits a limit
 //   tears     glassy drops that well at his lower lids, run down his cheeks and drip off
+//   glints    a message: a bright bead with a tail of motes that comes round from behind him to an
+//             orb, and the faint ring it leaves as the orb gulps it
+//   queue     messages queued behind a thread's turn, small glass seeds circling its orb
+//   pr rings  a thin lit band round an orb whose thread has a pull request: silver with a light
+//             running round it while its checks run, green when they pass, red and broken when not
+//   seeds     scheduled tasks as glossy teardrops on a small halo over his head, ripening as their
+//             run nears and dropping into his T3 when it fires
+//   shells    the two halves of a snoozed orb's egg, falling away tumbling as it hatches
+//   beams     a thin psychic beam from his T3 to an orb he is mending
+//   asks      chunky amber glass strokes that grow up out of a waiting orb, making it the dot of a
+//             "?" (a "!" bar for an approval); they bob with their dot, sway and glow, and pull
+//             back down into it when the question is answered
 //
 // Positions are world units (his model metres); `pageToWorld` maps page CSS px onto a plane
 // in front of him for effects that start where the mouse is.
@@ -24,8 +36,6 @@ const rand = (a, b) => a + Math.random() * (b - a);
 
 export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
   const unit = (px) => px / pxPerUnit();
-
-  // ------------------------------------------------------------ shapes
 
   function heartShape() {
     const s = new THREE.Shape();
@@ -83,6 +93,7 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
     ember: gloss(0xd7c2ff, 0x8a55ff, { emissiveIntensity: 1.7, roughness: 0.3, flatShading: true, sheen: 0 }),
     // A tear: clearer and brighter than drool, it has to read on his pale skin.
     tear: gloss(0xeaf6ff, 0x3a6aa0, { roughness: 0.03, clearcoatRoughness: 0.02, opacity: 0.88, emissiveIntensity: 0.32, sheen: 0, depthWrite: false }),
+    ask: gloss(0xffc65a, 0xffb340, { emissiveIntensity: 0.35, roughness: 0.18, clearcoatRoughness: 0.06, sheen: 0.3 }),
   };
 
   // -------------------------------------------------------- floaters
@@ -354,29 +365,360 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
     glare.material.opacity = strength * (0.55 + 0.35 * open);
   }
 
-  // ------------------------------------------------------------ rings
+  // ---------------------------------------------------------- ripples
 
-  const ringGeometry = new THREE.TorusGeometry(1, 0.045, 14, 72);
-  const rings = [];
-  function ring(at, delay = 0) {
-    const material = new THREE.MeshPhysicalMaterial({ color: 0xd6c4ff, emissive: 0x9f7bff, emissiveIntensity: 1.4, roughness: 0.25, clearcoat: 1, transparent: true, opacity: 0, depthWrite: false });
-    const mesh = new THREE.Mesh(ringGeometry, material);
-    mesh.position.copy(at);
-    mesh.rotation.set(rand(0.3, 0.5), rand(-0.3, 0.3), 0);
-    mesh.renderOrder = 7;
-    scene.add(mesh);
-    rings.push({ mesh, t0: null, delay, at: at.clone() });
+  // Each ripple is a ring of light drawn on a plane parallel to his forehead and lifting off it, so
+  // however wide it grows it never cuts into his head. It leaves the T3 as a crisp bright crest and
+  // spreads, slowing, into a soft nebulous band: out of round and wavering, its light gathered into
+  // drifting wisps, a faint violet wake inside the crest and a rosy fringe outside it. It tints what
+  // it passes over as well as lighting it, so it stays violet on his pale skin instead of bleaching
+  // to white, and glows on a dark desktop.
+  const RIPPLE_S = 1.3;
+  const rippleGeometry = new THREE.PlaneGeometry(2, 2);
+  const rippleShader = {
+    transparent: true, depthWrite: false, premultipliedAlpha: true, side: THREE.DoubleSide, toneMapped: false,
+    vertexShader: `
+      varying vec2 vPos;
+      void main() { vPos = position.xy; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+    fragmentShader: `
+      uniform float uTime, uRadius, uWidth, uAlpha, uHot, uSeed;
+      varying vec2 vPos;
+      void main() {
+        float r = length(vPos), a = atan(vPos.y, vPos.x);
+        float bend = 1.0 + 0.045 * sin(3.0 * a + uSeed + uTime * 1.3) + 0.025 * sin(5.0 * a - 2.0 * uSeed - uTime * 1.9);
+        float d = (r - uRadius * bend) / uWidth;
+        float crest = exp(-d * d);
+        float wake = (1.0 - smoothstep(-1.5, 0.0, d)) * exp(d * 0.45) * 0.22;
+        float fringe = exp(-(d - 1.3) * (d - 1.3) * 1.6) * 0.3;
+        float wisps = 0.5 + 0.3 * sin(7.0 * a + 3.0 * uSeed - uTime * 1.6) + 0.2 * sin(12.0 * a - 5.0 * uSeed + uTime * 2.4);
+        float k = uAlpha * (0.4 + 0.6 * wisps) * (1.0 - smoothstep(0.9, 1.0, r));
+        vec3 violet = vec3(0.5, 0.32, 1.0), lilac = vec3(0.74, 0.58, 1.0), hot = vec3(0.95, 0.88, 1.0), rose = vec3(1.0, 0.5, 0.9);
+        float i = crest + wake + fringe;
+        vec3 c = violet * wake + mix(lilac, hot, uHot) * crest + rose * fringe;
+        gl_FragColor = vec4(c * k, min(1.0, i * k * 0.62));
+      }`,
+  };
+  // A finished ripple is kept, hidden, for the next one: disposing the last of them would free their
+  // shader, and the next spawn would stall compiling it again.
+  const ripples = [], spareRipples = [];
+  const outward = new THREE.Vector3(0, 0, 1);
+
+  /// A ripple leaves the T3 `delay` s from now; `strength` 0 .. 1 sets how bright and wide it goes.
+  function ripple({ delay = 0, strength = 1 } = {}) {
+    let mesh = spareRipples.pop();
+    if (!mesh) {
+      mesh = new THREE.Mesh(rippleGeometry, new THREE.ShaderMaterial({
+        ...rippleShader,
+        uniforms: { uTime: { value: 0 }, uRadius: { value: 0 }, uWidth: { value: 1 }, uAlpha: { value: 0 }, uHot: { value: 1 }, uSeed: { value: 0 } },
+      }));
+      mesh.renderOrder = 7;
+      scene.add(mesh);
+    }
+    mesh.visible = false;
+    mesh.material.uniforms.uSeed.value = rand(0, TAU);
+    ripples.push({ mesh, t0: null, delay, strength, size: 0.8 + 0.2 * strength });
   }
-  function stepRings(t) {
+
+  /// `forehead` is { at, normal }: the T3 in world units and the way his forehead faces there.
+  function stepRipples(t, forehead) {
+    for (let i = ripples.length - 1; i >= 0; i -= 1) {
+      const r = ripples[i];
+      if (r.t0 === null) r.t0 = t + r.delay;
+      const u = (t - r.t0) / RIPPLE_S;
+      if (u >= 1 || !forehead) { r.mesh.visible = false; spareRipples.push(r.mesh); ripples.splice(i, 1); continue; }
+      r.mesh.visible = u >= 0;
+      if (u < 0) continue;
+      const e = 1 - Math.pow(1 - u, 3);
+      const radius = unit(14 + 128 * e) * r.size, width = unit(2.5 + 13 * u) * r.size;
+      const half = radius + width * 4;
+      r.mesh.position.copy(forehead.at).addScaledVector(forehead.normal, unit(5 + 50 * e));
+      r.mesh.quaternion.setFromUnitVectors(outward, forehead.normal);
+      r.mesh.scale.setScalar(half);
+      const uniforms = r.mesh.material.uniforms;
+      uniforms.uTime.value = t;
+      uniforms.uRadius.value = radius / half;
+      uniforms.uWidth.value = width / half;
+      uniforms.uHot.value = 1 - smooth(0, 0.45, u);
+      uniforms.uAlpha.value = r.strength * smooth(0, 0.05, u) * (1 - smooth(0.3, 1, u));
+    }
+  }
+
+  // ----------------------------------------------------------- glints
+
+  const GLINT_MOTES = 8;
+  const ringGeometry = new THREE.TorusGeometry(1, 0.05, 6, 40);
+  const glints = [], rings = [];
+  const glow = (color, extra = {}) => gloss(color, color, { emissiveIntensity: 2, roughness: 0.1, clearcoatRoughness: 0.05, sheen: 0, depthWrite: false, ...extra });
+
+  /// A glint: `at(u)` gives its world point at u (0 .. 1) of its flight, re-read every frame so it
+  /// can chase a moving orb; `size` is its bead's diameter in world units. Hidden behind him by
+  /// his own body while its path runs there. `done(arrived)` runs once when it ends: `true` when it
+  /// lands, `false` when `at` lost its orb first.
+  function glint({ at, color, size, duration, done }) {
+    const material = glow(color);
+    const bead = new THREE.Mesh(geometry.drop, material);
+    bead.scale.setScalar(size);
+    bead.renderOrder = 6;
+    const motes = Array.from({ length: GLINT_MOTES }, (_, i) => {
+      const m = new THREE.Mesh(geometry.drop, glow(color, { opacity: 0.8 * (1 - i / GLINT_MOTES) }));
+      m.scale.setScalar(size * 0.45 * (1 - 0.7 * i / GLINT_MOTES));
+      m.renderOrder = 6;
+      m.visible = false;
+      return m;
+    });
+    scene.add(bead, ...motes);
+    glints.push({ at, bead, motes, material, size, duration, done, t0: null, path: [] });
+  }
+
+  /// A faint ring spreading from an orb as it gulps a glint; `delay` staggers a second one.
+  function ring(at, { color, radius, duration = 0.4, delay = 0 }) {
+    const mesh = new THREE.Mesh(ringGeometry, glow(color, { emissiveIntensity: 0.9 }));
+    mesh.position.copy(at);
+    mesh.renderOrder = 6;
+    mesh.visible = false;
+    scene.add(mesh);
+    rings.push({ mesh, radius, duration, t0: null, delay });
+  }
+
+  function stepGlints(t) {
+    for (let i = glints.length - 1; i >= 0; i -= 1) {
+      const g = glints[i];
+      if (g.t0 === null) g.t0 = t;
+      const u = Math.min(1, (t - g.t0) / g.duration);
+      const p = g.at(u);
+      if (!p || u >= 1) {
+        g.done?.(!!p);
+        scene.remove(g.bead, ...g.motes);
+        g.material.dispose();
+        for (const m of g.motes) m.material.dispose();
+        glints.splice(i, 1);
+        continue;
+      }
+      g.bead.position.copy(p);
+      // The tail: earlier points of its own path, one mote per tenth of a bead width back.
+      g.path.unshift(p.clone());
+      g.path.length = Math.min(g.path.length, 60);
+      let k = 0, gone = 0;
+      for (let j = 1; j < g.path.length && k < GLINT_MOTES; j += 1) {
+        gone += g.path[j].distanceTo(g.path[j - 1]);
+        if (gone < (k + 1) * g.size * 0.47) continue;
+        g.motes[k].position.copy(g.path[j]);
+        g.motes[k].visible = true;
+        k += 1;
+      }
+    }
     for (let i = rings.length - 1; i >= 0; i -= 1) {
       const r = rings[i];
       if (r.t0 === null) r.t0 = t + r.delay;
-      const u = (t - r.t0) / 1.1;
+      const u = (t - r.t0) / r.duration;
       if (u >= 1) { scene.remove(r.mesh); r.mesh.material.dispose(); rings.splice(i, 1); continue; }
-      const e = 1 - Math.pow(1 - clamp01(u), 3);
-      r.mesh.scale.setScalar(0.05 + 0.55 * e);
-      r.mesh.material.opacity = u < 0 ? 0 : 0.95 * (1 - smooth(0.25, 1, u));
-      r.mesh.position.set(r.at.x, r.at.y + 0.05 * e, r.at.z + 0.08 * e);
+      r.mesh.visible = u >= 0;
+      if (u < 0) continue;
+      r.mesh.scale.setScalar(r.radius * (0.55 + 0.75 * (1 - Math.pow(1 - u, 2))));
+      r.mesh.material.opacity = 0.5 * (1 - u);
+    }
+  }
+
+  // --------------------------------------------------------- pr rings
+
+  const PR_COLOR = { pending: 0xc7ccd6, pass: 0x30d158, fail: 0xff453a };
+  const PR_TUBE = 0.046, PR_GAP = 20 * Math.PI / 180, PR_TILT = 1.2;
+  const prGeometry = { whole: new THREE.TorusGeometry(1, PR_TUBE, 6, 56), broken: new THREE.TorusGeometry(1, PR_TUBE, 6, 56, TAU - PR_GAP), glint: new THREE.TorusGeometry(1, PR_TUBE * 1.6, 6, 10, 0.5) };
+  const prRings = new Map();   // orb id -> { group, band, glint, material, shown, opacity }
+
+  /// This frame's pull request rings (orbit.prRings()): each a band 1.2 orbs across round its orb,
+  /// tilted like his rings. A changed state crossfades over half a second; one that goes fades out.
+  function setPrRings(list, t, dt, reduced) {
+    const live = new Set();
+    for (const r of list) {
+      live.add(r.id);
+      let ring = prRings.get(r.id);
+      if (!ring) {
+        const material = gloss(PR_COLOR[r.state], PR_COLOR[r.state], { emissiveIntensity: 0.5, roughness: 0.2, opacity: 0 });
+        const band = new THREE.Mesh(prGeometry.whole, material);
+        const glint = new THREE.Mesh(prGeometry.glint, gloss(0xffffff, 0xffffff, { emissiveIntensity: 1.2, opacity: 0, depthWrite: false }));
+        const group = new THREE.Group();
+        group.add(band, glint);
+        band.renderOrder = glint.renderOrder = 5;
+        scene.add(group);
+        ring = { group, band, glint, material, color: new THREE.Color(PR_COLOR[r.state]), opacity: 0 };
+        prRings.set(r.id, ring);
+      }
+      ring.target = r;
+    }
+    for (const [id, ring] of prRings) {
+      const r = ring.target, here = live.has(id);
+      const ease = 1 - Math.exp(-dt / (here ? 0.5 : 0.6) * 4);
+      ring.opacity += ((here ? (r.state === 'pending' ? 0.4 : 1) * (r.opacity ?? 1) : 0) - ring.opacity) * ease;
+      if (!here && ring.opacity < 0.01) { scene.remove(ring.group); ring.material.dispose(); ring.glint.material.dispose(); prRings.delete(id); continue; }
+      ring.color.lerp(new THREE.Color(PR_COLOR[r.state]), ease);
+      ring.material.color.copy(ring.color); ring.material.emissive.copy(ring.color);
+      ring.band.geometry = r.state === 'fail' ? prGeometry.broken : prGeometry.whole;
+      // A failing ring glows a little on a slow fixed beat; a pending one has a light running round.
+      ring.material.emissiveIntensity = r.state === 'fail' && !reduced ? 0.5 + 0.25 * (0.5 + 0.5 * Math.sin(t * TAU / 0.8)) : 0.5;
+      ring.material.opacity = ring.opacity;
+      ring.glint.visible = r.state === 'pending' && !reduced;
+      ring.glint.rotation.z = (t * TAU / 2.4) % TAU;
+      ring.glint.material.opacity = ring.opacity * 1.5;
+      const at = here ? pageToWorld(r.x, r.y, r.back ? -0.62 : 0.78) : null;
+      if (at) ring.group.position.copy(at);
+      ring.group.scale.setScalar(unit(r.size * 0.6));
+      ring.group.rotation.set(PR_TILT, 0, r.roll ?? 0);
+    }
+  }
+
+  // ------------------------------------------------------------ seeds
+
+  // A teardrop one unit long, round end down, point up.
+  const seedGeometry = new THREE.LatheGeometry(
+    Array.from({ length: 15 }, (_, i) => { const a = Math.PI * i / 14; return new THREE.Vector2(0.32 * Math.sin(a) * Math.pow((1 + Math.cos(a)) / 2, 0.6), -0.5 * Math.cos(a)); }),
+    16);
+  const seedCrack = new THREE.CylinderGeometry(0.018, 0.018, 0.62, 4);
+  const SEED_LAP_S = 40, SEED_TILT = 0.2, SEED_DROP_S = 0.6, SEED_REGROW_S = 1.2;
+  const seeds = new Map();   // id -> { group, mesh, crack, material, drop, regrow }
+
+  /// This frame's seeds: [{ id, color, ripe 0 .. 1, failed }] round a halo of `radius` (world)
+  /// centred at `centre`, each `size` long, turning on a fixed lap. Ripeness is glow; with reduced
+  /// motion the halo stands still.
+  function setSeeds(list, { centre, radius, size, t, reduced, forehead }) {
+    const live = new Set(list.map((s) => s.id));
+    for (const [id, s] of seeds) if (!live.has(id)) { scene.remove(s.group); s.material.dispose(); s.crack.material.dispose(); seeds.delete(id); }
+    const lap = reduced ? 0 : t * TAU / SEED_LAP_S;
+    list.forEach((seed, i) => {
+      let s = seeds.get(seed.id);
+      if (!s) {
+        const material = gloss(seed.color, seed.color, { emissiveIntensity: 0.2, roughness: 0.15 });
+        const mesh = new THREE.Mesh(seedGeometry, material);
+        const crack = new THREE.Mesh(seedCrack, new THREE.MeshBasicMaterial({ color: 0x1a1020 }));
+        crack.position.z = 0.27; crack.rotation.z = 0.5;
+        const group = new THREE.Group();
+        group.add(mesh, crack);
+        group.renderOrder = 5;
+        scene.add(group);
+        s = { group, mesh, crack, material, drop: null, regrow: null };
+        seeds.set(seed.id, s);
+      }
+      s.material.color.set(seed.color); s.material.emissive.set(seed.color);
+      s.material.emissiveIntensity = 0.15 + 0.85 * seed.ripe;
+      s.crack.visible = !!seed.failed;
+      const a = lap + TAU * i / list.length;
+      const home = centre.clone().add(new THREE.Vector3(Math.cos(a) * radius, Math.sin(a) * radius * Math.sin(SEED_TILT), Math.sin(a) * radius * Math.cos(SEED_TILT)));
+      let at = home, scale = size;
+      if (s.drop !== null && forehead) {
+        const u = (t - s.drop) / SEED_DROP_S;
+        if (u >= 1) { s.drop = null; s.regrow = t; ripple({ strength: 0.7 }); }
+        else at = home.clone().lerp(forehead.at, u * u * u);
+      }
+      if (s.regrow !== null) {
+        const u = (t - s.regrow) / SEED_REGROW_S;
+        if (u >= 1) s.regrow = null; else scale = size * smooth(0, 1, u);
+      }
+      s.group.position.copy(at);
+      s.group.scale.setScalar(Math.max(scale, 1e-4));
+    });
+  }
+
+  /// A seed's task ran: it drops into his T3, which flares, and it grows back on the halo.
+  function dropSeed(id, t) {
+    const s = seeds.get(id);
+    if (s && s.drop === null) s.drop = t;
+  }
+
+  // ------------------------------------------------------- queue seeds
+
+  const queueSeeds = new Map();   // `${orb id}:${i}` -> mesh
+
+  /// This frame's queue seeds (orbit.queueSeeds()): page points with a length in px, the page
+  /// direction their point faces and a plane (front or behind him), drawn as small lit glass
+  /// teardrops in the queue's colour.
+  function setQueueSeeds(list) {
+    const live = new Set();
+    for (const string of list) {
+      string.points.forEach((p, i) => {
+        const key = `${string.id}:${i}`;
+        const at = pageToWorld(p.x, p.y, p.back ? -0.62 : 0.78);
+        if (!at) return;
+        live.add(key);
+        let mesh = queueSeeds.get(key);
+        if (!mesh) {
+          mesh = new THREE.Mesh(seedGeometry, gloss(string.color, string.color, { emissiveIntensity: 0.22, roughness: 0.08, clearcoatRoughness: 0.04 }));
+          mesh.renderOrder = 5;
+          scene.add(mesh);
+          queueSeeds.set(key, mesh);
+        }
+        mesh.position.copy(at);
+        mesh.scale.setScalar(Math.max(unit(p.size), 1e-4));
+        // The teardrop's point is +y; page y runs down.
+        mesh.rotation.set(0.35, 0, -p.turn - Math.PI / 2);
+        mesh.material.opacity = p.opacity ?? 1;
+      });
+    }
+    for (const [key, mesh] of queueSeeds) if (!live.has(key)) { scene.remove(mesh); mesh.material.dispose(); queueSeeds.delete(key); }
+  }
+
+  // ----------------------------------------------------------- shells
+
+  // Half an egg shell, its pointed end up (a lathe swept half way round), one unit tall.
+  const shellGeometry = new THREE.LatheGeometry(
+    Array.from({ length: 13 }, (_, i) => { const a = Math.PI * i / 12; return new THREE.Vector2(Math.sin(a) * (0.42 - 0.04 * Math.cos(a)), -0.5 * Math.cos(a) * (1 - 0.08 * Math.cos(a))); }),
+    18, 0, Math.PI);
+  const shells = [];
+
+  /// An egg hatching at `at`: its shell, `height` world units tall, splits and the halves fall away.
+  function shell(at, height, { duration = 0.6 } = {}) {
+    for (const side of [-1, 1]) {
+      const mesh = new THREE.Mesh(shellGeometry, gloss(0xf2f4ff, 0x8f9bc4, { emissiveIntensity: 0.25, roughness: 0.35, side: THREE.DoubleSide, opacity: 0.92 }));
+      mesh.position.copy(at);
+      mesh.rotation.y = side > 0 ? Math.PI / 2 : -Math.PI / 2;
+      mesh.scale.setScalar(height);
+      mesh.renderOrder = 6;
+      scene.add(mesh);
+      shells.push({ mesh, side, at: at.clone(), height, duration, t0: null });
+    }
+  }
+
+  function stepShells(t) {
+    for (let i = shells.length - 1; i >= 0; i -= 1) {
+      const s = shells[i];
+      if (s.t0 === null) s.t0 = t;
+      const u = (t - s.t0) / s.duration;
+      if (u >= 1) { scene.remove(s.mesh); s.mesh.material.dispose(); shells.splice(i, 1); continue; }
+      s.mesh.position.set(s.at.x + s.side * s.height * 0.35 * u, s.at.y - s.height * 0.4 * u * u, s.at.z);
+      s.mesh.rotation.z = s.side * 1.4 * u;
+      s.mesh.material.opacity = 0.92 * (1 - smooth(0.5, 1, u));
+    }
+  }
+
+  // ------------------------------------------------------------ beams
+
+  const beamGeometry = new THREE.CylinderGeometry(1, 1, 1, 10, 1, true);
+  const beams = [];
+  const up = new THREE.Vector3(0, 1, 0);
+
+  /// A beam from the T3 on his forehead to `to` (world units), lit for `duration` s.
+  function beam(to, { duration = 0.5 } = {}) {
+    const mesh = new THREE.Mesh(beamGeometry, materials.ember.clone());
+    mesh.material.depthWrite = false;
+    mesh.renderOrder = 7;
+    mesh.visible = false;
+    scene.add(mesh);
+    beams.push({ mesh, to: to.clone(), t0: null, duration });
+  }
+
+  function stepBeams(t, forehead) {
+    for (let i = beams.length - 1; i >= 0; i -= 1) {
+      const b = beams[i];
+      if (b.t0 === null) b.t0 = t;
+      const u = (t - b.t0) / b.duration;
+      if (u >= 1 || !forehead) { scene.remove(b.mesh); b.mesh.material.dispose(); beams.splice(i, 1); continue; }
+      const span = b.to.clone().sub(forehead.at);
+      // It shoots out from the T3 in the first fifth, then holds and fades.
+      const reach = smooth(0, 0.2, u);
+      b.mesh.visible = true;
+      b.mesh.position.copy(forehead.at).addScaledVector(span, reach / 2);
+      b.mesh.quaternion.setFromUnitVectors(up, span.clone().normalize());
+      b.mesh.scale.set(unit(3.2), span.length() * reach, unit(3.2));
+      b.mesh.material.opacity = 0.85 * (1 - smooth(0.55, 1, u));
     }
   }
 
@@ -474,6 +816,103 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
     tr.drop.material.dispose();
   }
 
+  // ------------------------------------------------------------- asks
+
+  // In orb sizes, from the dot's centre (y up), each stroke drawn up from its foot, a clear gap
+  // above the dot: the hook of a "?" and the bar of a "!", which widens toward its top. Each is
+  // swept as a thick rounded-square section, half `width` across the stroke (foot, end) and half
+  // ASK_DEPTH deep, with rounded ends.
+  const ASK_TUBE = 48, ASK_RADIAL = 16, ASK_DEPTH = 0.14, ASK_Z = 0.78;
+  const askStrokes = {
+    '?': { curve: new THREE.CatmullRomCurve3([[0, 0.84], [0, 1], [0.06, 1.17], [0.28, 1.31], [0.4, 1.54], [0.31, 1.79], [0.05, 1.9], [-0.22, 1.83], [-0.35, 1.66]].map(([x, y]) => new THREE.Vector3(x, y, 0))), width: [0.14, 0.18] },
+    '!': { curve: new THREE.LineCurve3(new THREE.Vector3(0, 0.84), new THREE.Vector3(0, 1.82)), width: [0.14, 0.24] },
+  };
+  const strokeWidth = (stroke, u) => stroke.width[0] + (stroke.width[1] - stroke.width[0]) * u;
+
+  /// A stroke as rings of ASK_RADIAL points, ASK_TUBE + 1 of them from foot to end, so drawing the
+  /// first n segments' triangles draws it n / ASK_TUBE of the way up.
+  function strokeGeometry(stroke) {
+    const position = [], index = [];
+    for (let i = 0; i <= ASK_TUBE; i += 1) {
+      const u = i / ASK_TUBE, at = stroke.curve.getPointAt(u), along = stroke.curve.getTangentAt(u), w = strokeWidth(stroke, u);
+      for (let j = 0; j < ASK_RADIAL; j += 1) {
+        const c = Math.cos(TAU * j / ASK_RADIAL), s = Math.sin(TAU * j / ASK_RADIAL);
+        const across = Math.sign(c) * Math.sqrt(Math.abs(c)) * w, deep = Math.sign(s) * Math.sqrt(Math.abs(s)) * ASK_DEPTH;
+        position.push(at.x - along.y * across, at.y + along.x * across, deep);
+      }
+    }
+    for (let i = 0; i < ASK_TUBE; i += 1) {
+      for (let j = 0; j < ASK_RADIAL; j += 1) {
+        const a = i * ASK_RADIAL + j, b = i * ASK_RADIAL + (j + 1) % ASK_RADIAL;
+        index.push(a, b, a + ASK_RADIAL, b, b + ASK_RADIAL, a + ASK_RADIAL);
+      }
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(position, 3));
+    g.setIndex(index);
+    g.computeVertexNormals();
+    return g;
+  }
+  const askGeometry = Object.fromEntries(Object.entries(askStrokes).map(([k, stroke]) => [k, strokeGeometry(stroke)]));
+  const marks = new Map();   // orb id -> { group, tube, tip, base, kind }
+
+  function makeMark(kind) {
+    const group = new THREE.Group();
+    const material = materials.ask.clone();
+    const tube = new THREE.Mesh(askGeometry[kind].clone(), material);
+    const tip = new THREE.Mesh(geometry.drop, material);
+    const base = new THREE.Mesh(geometry.drop, material);
+    const stroke = askStrokes[kind];
+    base.scale.set(strokeWidth(stroke, 0) * 2, strokeWidth(stroke, 0) * 2, ASK_DEPTH * 2);
+    base.position.copy(stroke.curve.getPointAt(0));
+    tube.renderOrder = tip.renderOrder = base.renderOrder = 6;
+    group.add(tube, tip, base);
+    scene.add(group);
+    return { group, tube, tip, base, kind, material };
+  }
+
+  function disposeMark(mark) {
+    scene.remove(mark.group);
+    mark.tube.geometry.dispose();
+    mark.material.dispose();
+  }
+
+  /// This frame's question marks (orbit.asks()): each hook stands on its dot's page position, so
+  /// the two line up whatever either does. A hook grows from 0.3 to 0.9 of its dot forming and
+  /// pulls back in as it is answered; with Reduce Motion it fades in whole and only its glow moves.
+  function setAsks(list, t, reduced) {
+    const live = new Set();
+    for (const ask of list) {
+      if (ask.gone) continue;
+      live.add(ask.id);
+      let mark = marks.get(ask.id);
+      if (mark && mark.kind !== ask.kind) { disposeMark(mark); mark = null; }
+      if (!mark) { mark = makeMark(ask.kind); marks.set(ask.id, mark); }
+      const at = pageToWorld(ask.x, ask.y, ASK_Z);
+      if (!at) { mark.group.visible = false; continue; }
+      mark.group.visible = true;
+      mark.group.position.copy(at);
+      mark.group.scale.setScalar(unit(ask.size));
+      mark.group.rotation.z = reduced ? 0 : (4 * Math.PI / 180) * Math.sin(t * TAU / 3.1 + ask.seed);
+      const grown = reduced ? 1 : 1 - Math.pow(1 - clamp01((ask.formed * 0.9 - 0.3) / 0.6), 2);
+      const u = grown * (1 - Math.pow(ask.retract, 2));
+      const segments = Math.floor(u * ASK_TUBE);
+      mark.tube.geometry.setDrawRange(0, ASK_RADIAL * 6 * segments);
+      mark.tip.visible = mark.base.visible = u > 0.02;
+      if (u > 0.02) {
+        const stroke = askStrokes[mark.kind], w = strokeWidth(stroke, segments / ASK_TUBE) * 2;
+        mark.tip.position.copy(stroke.curve.getPointAt(segments / ASK_TUBE));
+        mark.tip.scale.set(w, w, ASK_DEPTH * 2);
+      }
+      // A slow amber glow, wider once it has waited a minute; never quicker.
+      const urgent = smooth(60, 70, ask.waited);
+      const [lo, hi] = [0.25 - 0.05 * urgent, 0.45 + 0.15 * urgent];
+      mark.material.emissiveIntensity = lo + (hi - lo) * (0.5 + 0.5 * Math.sin(t * TAU / 2 + ask.seed * 3));
+      mark.material.opacity = (ask.opacity ?? 1) * (reduced ? smooth(0, 0.55, ask.formed) : 1) * (1 - ask.retract);
+    }
+    for (const [id, mark] of marks) if (!live.has(id)) { disposeMark(mark); marks.delete(id); }
+  }
+
   // ------------------------------------------------------------ stars
 
   const stars = Array.from({ length: 4 }, () => {
@@ -504,18 +943,35 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
     drip(at) { spawn('drip', at); },
     crumble,
     tear,
-    ring,
+    ripple,
     dizzyStars,
     setDrool,
     setVortex,
     setRadiance,
-    step(t, dt, { head }) {
+    setAsks,
+    beam,
+    glint,
+    ring,
+    shell,
+    setPrRings,
+    setSeeds,
+    dropSeed,
+    get seeds() { return [...seeds.entries()].map(([id, s]) => ({ id, glow: +s.material.emissiveIntensity.toFixed(2), cracked: s.crack.visible, dropping: s.drop !== null, at: s.group.position.clone() })); },
+    get prRings() { return [...prRings.entries()].map(([id, r]) => ({ id, opacity: +r.opacity.toFixed(2), color: r.color.getHexString(), broken: r.band.geometry === prGeometry.broken, glint: r.glint.visible })); },
+    setQueueSeeds,
+    get glints() { return glints.length; },
+    get queueSeedCount() { return queueSeeds.size; },
+    get marks() { return [...marks.entries()].map(([id, m]) => ({ id, kind: m.kind, visible: m.group.visible, drawn: m.tube.geometry.drawRange.count, at: m.group.position.clone() })); },
+    step(t, dt, { head, forehead }) {
       stepFloaters(t);
       stepTears(t);
-      stepRings(t);
+      stepRipples(t, forehead);
+      stepBeams(t, forehead);
+      stepGlints(t);
+      stepShells(t);
       stepStars(t, head);
     },
-    get busy() { return floaters.some((f) => f.kind !== 'star') || tears.length > 0 || rings.length > 0 || !!dizzy || vortex.visible || radiance.visible; },
+    get busy() { return floaters.some((f) => f.kind !== 'star') || tears.length > 0 || ripples.length > 0 || beams.length > 0 || glints.length > 0 || rings.length > 0 || shells.length > 0 || !!dizzy || vortex.visible || radiance.visible; },
     get count() { return floaters.filter((f) => f.kind !== 'star').length; },
     get tears() { return tears.length; },
   };

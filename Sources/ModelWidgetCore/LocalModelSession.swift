@@ -2,26 +2,9 @@ import Foundation
 
 public enum LocalModelSessionActivity: Equatable {
     case idle
-    case loading(LocalModelIdentity)
     case unloading
 
-    public var isBusy: Bool {
-        switch self {
-        case .idle:
-            return false
-        case .loading, .unloading:
-            return true
-        }
-    }
-
-    public var pendingModelID: LocalModelIdentity? {
-        switch self {
-        case let .loading(identity):
-            return identity
-        case .idle, .unloading:
-            return nil
-        }
-    }
+    public var isBusy: Bool { self == .unloading }
 }
 
 public struct LocalModelSessionState: Equatable {
@@ -37,7 +20,6 @@ public struct LocalModelSessionState: Equatable {
     public let activeLoadedModel: LoadedModel?
     public let activity: LocalModelSessionActivity
 
-    public var pendingModelID: LocalModelIdentity? { activity.pendingModelID }
     public var isBusy: Bool { activity.isBusy }
 
     public init(
@@ -98,30 +80,6 @@ public final class LocalModelSession {
     }
 
     @discardableResult
-    public func activate(_ model: LocalModel) async throws -> LocalModelSessionActionResult {
-        try await activateModel(with: model.identity)
-    }
-
-    @discardableResult
-    public func activateModel(with identity: LocalModelIdentity) async throws -> LocalModelSessionActionResult {
-        guard state.isBusy == false, let targetHost = host(for: identity) else {
-            return LocalModelSessionActionResult(state: state, didRun: false)
-        }
-
-        setState(state.withActivity(.loading(identity)))
-
-        do {
-            try await activate(identity, on: targetHost)
-            let refreshed = try await reconciledState(activity: .idle)
-            setState(refreshed)
-            return LocalModelSessionActionResult(state: state, didRun: true)
-        } catch {
-            setState(state.withActivity(.idle))
-            throw error
-        }
-    }
-
-    @discardableResult
     public func unloadActiveModel() async throws -> LocalModelSessionActionResult {
         guard state.isBusy == false else {
             return LocalModelSessionActionResult(state: state, didRun: false)
@@ -156,17 +114,6 @@ public final class LocalModelSession {
             return lhs.name < rhs.name
         }
         return lhs.providerID < rhs.providerID
-    }
-
-    private func activate(_ identity: LocalModelIdentity, on targetHost: ModelHost) async throws {
-        let loadedModels = try await loadedModels()
-        for loadedModel in loadedModels where loadedModel.identity != identity {
-            try await loadedModel.host.unloadModel(named: loadedModel.model.name)
-        }
-
-        if loadedModels.contains(where: { $0.identity == identity }) == false {
-            try await targetHost.loadModel(named: identity.name)
-        }
     }
 
     private func unloadLoadedModels() async throws {
@@ -226,10 +173,6 @@ public final class LocalModelSession {
             loadedModels.append(contentsOf: loaded.map { HostedLoadedModel(host: host, model: $0) })
         }
         return loadedModels
-    }
-
-    private func host(for identity: LocalModelIdentity) -> ModelHost? {
-        hosts.first { $0.id == identity.providerID }
     }
 
     private func annotate(_ installedModel: LocalModel, with loadedModel: LoadedModel?) -> LocalModel {
@@ -322,10 +265,6 @@ private struct ModelHost {
                 expiresAt: model.expiresAt
             )
         }
-    }
-
-    func loadModel(named name: String) async throws {
-        try await provider.loadModel(named: name)
     }
 
     func unloadModel(named name: String) async throws {

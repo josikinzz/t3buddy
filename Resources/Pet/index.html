@@ -20,8 +20,12 @@
   #stage { z-index: 1; }
   #orbits, #orbits-back { position: fixed; inset: 0; pointer-events: none; }
   #orbits { z-index: 2; }
+  /* The feed has not heard from T3 for a while: the orbit greys a little until it has. */
+  #orbits, #orbits-back { transition: filter 2s; }
+  html[data-feed="stale"] #orbits, html[data-feed="stale"] #orbits-back { filter: saturate(0.75); }
   #orbits-back { z-index: 0; }
   .orbit-lines { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; }
+  .orbit-lines.orbit-labels { z-index: 3000; }
   .orb { position: absolute; left: 0; top: 0; width: var(--orb, 36px); height: var(--orb, 36px); will-change: transform, opacity; transform-origin: 50% 50%;
     filter: brightness(calc(.74 + .26 * var(--lit, 1))); }
   /* Every face is a little sphere: a lit highlight up and left, a darker limb, a soft shadow below. */
@@ -38,6 +42,7 @@
       radial-gradient(ellipse 60% 30% at 55% 88%, rgba(255, 255, 255, .16) 0, rgba(255, 255, 255, 0) 100%);
     box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22), inset 0 calc(var(--orb, 36px) * -.05) calc(var(--orb, 36px) * .1) rgba(190, 170, 255, .2); }
   .orb-face.favicon .orb-icon { width: 72%; height: 72%; object-fit: contain; filter: drop-shadow(0 calc(var(--orb, 36px) * .03) calc(var(--orb, 36px) * .04) rgba(0, 0, 0, .45)); }
+  .orb-face.favicon.squircle .orb-icon { border-radius: 22%; object-fit: cover; }
   .orb-face.photo .orb-icon { width: 100%; height: 100%; object-fit: cover; }
   /* A subagent: a dark glossy sphere wearing its provider's logo. */
   .orb-face.provider { background: radial-gradient(circle at 34% 30%, #5d5770 0, #2b2836 48%, #121019 100%); }
@@ -59,25 +64,18 @@
     filter: drop-shadow(0 0 calc(var(--orb, 36px) * .03) rgba(6, 3, 18, .7)) drop-shadow(0 calc(var(--orb, 36px) * .015) calc(var(--orb, 36px) * .015) rgba(0, 0, 0, .5)); }
   .orb-badge.round { border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 1px rgba(255, 255, 255, .55); }
   .orb[data-mode="sat"] .orb-badge { display: none; }
-  /* How lively its thread is: a quick breath while busy, a slow one when quiet, still and dim when
-     it has been quiet for minutes (--stale, 0 .. 1). */
-  .orb[data-pace="busy"] .orb-face { animation: breathe 1.15s ease-in-out infinite; }
-  .orb[data-pace="quiet"] .orb-face { animation: breathe 3.2s ease-in-out infinite; }
+  /* How lively its thread is: a quick breath while busy, a slow one when quiet (--pulse, from
+     orbit.js, which keeps its phase), still and dim when it has been quiet for minutes (--stale, 0 .. 1). */
+  .orb[data-pace] .orb-face { transform: scale(var(--pulse, 1)); }
+  .orb[data-crest] .orb-face { filter: brightness(var(--crest, 1)); }
   .orb[data-pace="stale"] { filter: brightness(calc((.74 + .26 * var(--lit, 1)) * (1 - .38 * var(--stale, 0)))) saturate(calc(1 - .5 * var(--stale, 0))); }
-  @keyframes breathe { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.055); } }
-  /* Waiting on the owner: a "?" (a question) or "!" badge (not colour alone). */
-  .orb-alert { position: absolute; z-index: 4; right: calc(var(--orb, 36px) * -.08); top: calc(var(--orb, 36px) * -.1); width: calc(var(--orb, 36px) * .42); height: calc(var(--orb, 36px) * .42);
-    border-radius: 50%; display: none; align-items: center; justify-content: center; color: #1c1917;
-    background: radial-gradient(circle at 35% 30%, #fde68a 0, #f59e0b 55%, #b45309 100%);
-    font: 800 calc(var(--orb, 36px) * .3)/1 -apple-system, system-ui, sans-serif; box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .92), 0 2px 4px rgba(0, 0, 0, .35); }
-  .orb[data-state="waiting"] .orb-alert { display: flex; animation: alert-bob 0.9s ease-in-out infinite; }
-  /* Waiting on you: the sphere pulses with amber light. */
+  /* Waiting on you: the orb is the dot of a 3D question mark (effects.js draws the hook) and
+     pulses with amber light. */
   .orb[data-state="waiting"] .orb-face { animation: wait-pulse 1.1s ease-in-out infinite; }
   @keyframes wait-pulse {
     0%, 100% { box-shadow: 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42), 0 0 calc(var(--orb, 36px) * .15) rgba(255, 176, 40, .35); }
     50% { box-shadow: 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42), 0 0 calc(var(--orb, 36px) * .55) calc(var(--orb, 36px) * .08) rgba(255, 186, 52, .9); }
   }
-  @keyframes alert-bob { 0%, 100% { transform: translateY(0) scale(1); } 50% { transform: translateY(-12%) scale(1.08); } }
   /* Failed: the sphere turns to red glass, its icon and logo tinted red, and cracks, until you look at it; seen, it greys and sinks.
      One dying at a limit is left to its dark-glass death. */
   .orb-crack { position: absolute; inset: 0; z-index: 2; display: none; pointer-events: none; border-radius: 50%; overflow: hidden; }
@@ -90,6 +88,32 @@
   .orb[data-state="failed"]:not([data-dying]) .orb-face.ringed::before { box-shadow: inset 0 0 0 calc(var(--orb, 36px) * .07) #7a0a1c; }
   .orb[data-state="failed"][data-seen] .orb-face, .orb[data-state="failed"][data-seen] .orb-badge { filter: grayscale(1) brightness(.72) contrast(.9); box-shadow: none; }
   .orb[data-state="failed"][data-seen] .orb-crack { opacity: .5; }
+  /* A failure chips a bite out of its orb's edge, the same spot for that orb (--chip-x, --chip-y). */
+  .orb[data-state="failed"]:not([data-dying]) .orb-face, .orb[data-state="failed"]:not([data-dying]) .orb-crack {
+    -webkit-mask: radial-gradient(circle at var(--chip-x, 90%) var(--chip-y, 30%), transparent 0 21%, #000 23%); mask: radial-gradient(circle at var(--chip-x, 90%) var(--chip-y, 30%), transparent 0 21%, #000 23%); }
+  /* Snoozed: the orb is a frosted egg at his feet, its icon dim through the shell; it elongates over
+     the last half second of its way down. Hatching, white cracks draw across the shell. With reduced
+     motion its rim glows amber over its last minute (--wake, 0 .. 1). */
+  .orb[data-egg] .orb-face, .orb[data-egg] .orb-crack { border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%; }
+  .orb[data-egg] .orb-face { transform: scale(.92, 1.18); filter: saturate(.2) brightness(1.4) contrast(.7) blur(.5px);
+    box-shadow: inset 0 calc(var(--orb, 36px) * -.08) calc(var(--orb, 36px) * .22) rgba(214, 222, 246, .9), 0 0 calc(var(--orb, 36px) * .35) rgba(255, 179, 64, calc(var(--wake, 0) * .85)), 0 calc(var(--orb, 36px) * .08) calc(var(--orb, 36px) * .16) rgba(8, 4, 22, .3);
+    transition: transform .5s ease-in-out .6s, border-radius .5s ease-in-out .6s, filter 1.1s ease, box-shadow 1.1s ease; }
+  .orb[data-egg] .orb-face::after { border-radius: inherit; }
+  .orb[data-hatching] .orb-crack { display: block; }
+  .orb[data-hatching] .orb-crack svg path { stroke: rgba(255, 255, 255, .95); stroke-dasharray: 160; animation: hatch-crack .3s ease-out forwards; }
+  @keyframes hatch-crack { from { stroke-dashoffset: 160; } to { stroke-dashoffset: 0; } }
+  /* Gulping a message: a flash of the glint's colour on the glass (orbit.js sets --gulp, 0 .. .8). */
+  .orb:not([data-dying])::after { content: ""; position: absolute; inset: 0; z-index: 3; border-radius: 50%; pointer-events: none; opacity: var(--gulp, 0);
+    background: radial-gradient(circle at 40% 36%, var(--gulp-color, #fff1d0) 0, transparent 72%); mix-blend-mode: screen; }
+  .orb[data-flip]::after { background: radial-gradient(circle, transparent 54%, var(--gulp-color, #8e8e93) 66%, transparent 74%); mix-blend-mode: normal; }
+  .orb-badge { backface-visibility: hidden; }
+  /* Mending: violet light fills the cracks and seals them, and the red drains to clear glass. */
+  .orb[data-mending] .orb-crack { display: block; animation: mend-seal 1.5s ease-in forwards; }
+  .orb[data-mending] .orb-crack svg path:nth-child(even) { stroke: #c4a6ff; }
+  .orb[data-mending] .orb-face::after { content: ''; position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+    background: radial-gradient(circle at 34% 30%, rgba(255, 146, 154, .9) 0, rgba(222, 36, 56, .88) 46%, rgba(108, 6, 22, .94) 100%); animation: mend-drain 1.5s linear forwards; }
+  @keyframes mend-seal { 0%, 30% { opacity: 1; filter: none; } 60% { opacity: 1; filter: drop-shadow(0 0 3px #a87bff) brightness(1.6); } 100% { opacity: 0; filter: drop-shadow(0 0 1px #a87bff); } }
+  @keyframes mend-drain { 0%, 70% { opacity: 1; } 100% { opacity: 0; } }
   .orb.cracking .orb-face, .orb.cracking .orb-crack { animation: crack-jolt .6s cubic-bezier(.3, .7, .4, 1); }
   @keyframes crack-jolt { 0% { transform: scale(1.18); } 15% { transform: translateX(-6%) scale(.96); } 30% { transform: translateX(5%); } 45% { transform: translateX(-3%); } 60% { transform: translateX(2%); } 100% { transform: none; } }
   /* Its provider hit a limit: the orb dies under a big copy of the provider's logo (orbit.js drives
@@ -97,7 +121,7 @@
   .orb-doom { position: absolute; z-index: 5; left: 50%; top: 50%; width: 175%; height: 175%; object-fit: contain; opacity: 0; pointer-events: none;
     transform: translate(-50%, -50%) scale(.3); will-change: transform, opacity, filter; }
   .orb-doom.round { border-radius: 50%; object-fit: cover; }
-  .orb[data-dying] .orb-alert, .orb[data-dying] .orb-crack { display: none; }
+  .orb[data-dying] .orb-crack { display: none; }
   .orb[data-dying] .orb-face { animation: none; }
   /* The darkened ball keeps a glassy highlight, a cold violet rim and a faint aura, so it still reads
      on a dark desktop; orbit.js burns them away with it (--aura). */
@@ -105,9 +129,21 @@
     background: radial-gradient(circle at 34% 28%, rgba(232, 222, 255, .55) 0, rgba(232, 222, 255, .14) 13%, rgba(0, 0, 0, 0) 30%);
     box-shadow: inset 0 0 0 1.5px rgba(206, 184, 255, .7), inset 0 calc(var(--orb, 36px) * -.1) calc(var(--orb, 36px) * .22) rgba(150, 105, 255, .7),
       0 0 calc(var(--orb, 36px) * .5) calc(var(--orb, 36px) * .06) rgba(120, 64, 230, .7); }
-  /* Psychic flight out of his forehead: a violet aura that fades as the orb settles. */
-  .orb.psychic .orb-face { box-shadow: 0 0 calc(var(--orb, 36px) * .35) calc(var(--orb, 36px) * .06) rgba(196, 165, 255, .85), 0 0 calc(var(--orb, 36px) * .9) rgba(150, 110, 255, .45); }
+  /* Psychic: a violet aura (--psy, eased away by orbit.js as a new orb settles; full on a stirring
+     orb). Out of his forehead the orb is first a soft ball of light (--haze) that condenses into it. */
+  .orb.psychic .orb-face { box-shadow: 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, calc(.42 * (1 - var(--psy, 1)))),
+    0 0 calc(var(--orb, 36px) * .3) calc(var(--orb, 36px) * .05) rgba(206, 180, 255, calc(.8 * var(--psy, 1))),
+    0 0 calc(var(--orb, 36px) * .95) calc(var(--orb, 36px) * .12) rgba(140, 92, 255, calc(.5 * var(--psy, 1))); }
+  .orb.emerging .orb-face { transition: none;
+    filter: brightness(calc(1 + 1.8 * var(--haze, 0))) saturate(calc(1 - .55 * var(--haze, 0))) blur(calc(var(--orb, 36px) * .14 * var(--haze, 0))); }
   .orb.hover .orb-face { box-shadow: 0 0 calc(var(--orb, 36px) * .3) calc(var(--orb, 36px) * .04) rgba(236, 226, 255, .75), 0 calc(var(--orb, 36px) * .1) calc(var(--orb, 36px) * .2) rgba(8, 4, 22, .42); }
+  /* Reduce Motion, as pet.js resolves it (the host's setting, ?reduced or the media query): no throb,
+     jolt or reshaping. A waiting orb's glow holds halfway through its pulse, an egg only fades into
+     its shell, and mending cracks fade with the red. */
+  html[data-reduced-motion] .orb[data-state="waiting"] .orb-face { animation-play-state: paused; animation-delay: -.275s; }
+  html[data-reduced-motion] .orb[data-egg] .orb-face { transition: filter 1.1s ease, box-shadow 1.1s ease; }
+  html[data-reduced-motion] .orb[data-mending] .orb-crack { animation: mend-drain 1.5s linear forwards; }
+  html[data-reduced-motion] .orb.cracking .orb-face, html[data-reduced-motion] .orb.cracking .orb-crack { animation: none; }
 </style>
 <script type="importmap">
 { "imports": { "three": "./vendor/three/build/three.module.js" } }

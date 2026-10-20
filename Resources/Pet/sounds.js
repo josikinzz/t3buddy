@@ -39,7 +39,7 @@ const CLIPS = {
   suck:  { gain: 0.5,  cooldown: 2.5,  rate: 0.12, vol: 0.15 },   // an orb sucked in on the wind
   gulp:  { gain: 0.6,  cooldown: 2,    rate: 0.12, vol: 0.15 },   // ... and the gulp
   fail:  { gain: 0.6,  cooldown: 4,    rate: 0.1,  vol: 0.1 },    // a thread failed: flinch and crack
-  hold:  { gain: 0.5,  cooldown: 8,    rate: 0.1,  vol: 0.1 },    // holding out a waiting orb
+  hold:  { gain: 0.5,  cooldown: 8,    rate: 0.1,  vol: 0.1 },    // a question mark forming over a waiting orb
   dance: { gain: 0.55, cooldown: 10,   rate: 0.06, vol: 0.1 },    // the all-done dance
   yawn:  { gain: 0.55, cooldown: 20,   rate: 0.1,  vol: 0.1 },    // a yawn before he nods off
   snore: { gain: 0.4,  cooldown: 4.5,  rate: 0.12, vol: 0.2 },    // asleep, with the Zs

@@ -98,7 +98,6 @@ public protocol ModelProvider {
 
     func installedModels() async throws -> [LocalModel]
     func loadedModels() async throws -> [LoadedModel]
-    func loadModel(named name: String) async throws
     func unloadModel(named name: String) async throws
 }
 

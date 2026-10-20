@@ -15,6 +15,8 @@ public struct SubscriptionUsage: Identifiable, Codable, Sendable {
     public var windows: [UsageWindow]
     public var error: String?
     public var checked: Date?
+    /// A plain fact about the reading, such as where and when another app took it.
+    public var note: String?
 
     /// Still has quota: no error and every reported window under 100%.
     public var isUsable: Bool { error == nil && windows.allSatisfy { $0.used < 100 } }

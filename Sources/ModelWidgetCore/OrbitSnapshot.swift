@@ -1,32 +1,5 @@
 import Foundation
 
-/// What T3boii's orbit shows. Swift owns it; the pet page receives it as JSON via `window.t3boii.update(snapshot)`.
-public struct OrbitSnapshot: Codable, Equatable, Sendable {
-    public var orbs: [Orb]
-    /// Providers at a rate or usage limit right now, one per episode: a new one makes T3boii cry.
-    public var limits: [ProviderLimit]
-
-    public init(orbs: [Orb] = [], limits: [ProviderLimit] = []) {
-        self.orbs = orbs
-        self.limits = limits
-    }
-
-    private enum CodingKeys: String, CodingKey { case orbs, limits }
-
-    public init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        orbs = try container.decode([Orb].self, forKey: .orbs)
-        limits = try container.decodeIfPresent([ProviderLimit].self, forKey: .limits) ?? []
-    }
-
-    /// `limits` only when there are any, so a snapshot without limits reads as it always has.
-    public func encode(to encoder: Encoder) throws {
-        var container = encoder.container(keyedBy: CodingKeys.self)
-        try container.encode(orbs, forKey: .orbs)
-        if !limits.isEmpty { try container.encode(limits, forKey: .limits) }
-    }
-}
-
 public struct Orb: Codable, Equatable, Sendable {
     public enum Source: String, Codable, Sendable {
         case t3
@@ -44,6 +17,13 @@ public struct Orb: Codable, Equatable, Sendable {
     public enum WaitingFor: String, Codable, Sendable {
         case input
         case approval
+    }
+
+    /// A linked pull request's checks, for the ring on its orb.
+    public enum PullRequestState: String, Codable, Sendable {
+        case pending
+        case pass
+        case fail
     }
 
     /// Stable across snapshots; the scene diffs ids to spawn and reabsorb.
@@ -70,8 +50,18 @@ public struct Orb: Codable, Equatable, Sendable {
     public var limited: Bool?
     /// The provider that refused it, for that logo; usually `provider`.
     public var limitProvider: String?
+    /// The model the thread runs on (`claude-opus-5-5`), when the source says.
+    public var model: String?
+    /// How busy it is, 0 (idle) to 1 (30 or more timeline items a minute), in steps of 0.05.
+    /// Set by `FeedWorld` from the thread's item count; nil when the source cannot count.
+    public var level: Double?
+    /// The thread is snoozed in T3 until this time (seconds since 1970): it waits as an egg at his feet.
+    public var snoozedUntil: Double?
+    /// Messages queued for the thread's next turn.
+    public var queue: Int?
+    public var pr: PullRequestState?
 
-    public init(id: String, parentId: String? = nil, source: Source, projectIcon: OrbIcon, provider: String, state: State = .active, waitingFor: WaitingFor? = nil, label: String? = nil, link: String? = nil, activity: String? = nil, activeAt: Double? = nil, limited: Bool? = nil, limitProvider: String? = nil) {
+    public init(id: String, parentId: String? = nil, source: Source, projectIcon: OrbIcon, provider: String, state: State = .active, waitingFor: WaitingFor? = nil, label: String? = nil, link: String? = nil, activity: String? = nil, activeAt: Double? = nil, limited: Bool? = nil, limitProvider: String? = nil, model: String? = nil, level: Double? = nil, snoozedUntil: Double? = nil, queue: Int? = nil, pr: PullRequestState? = nil) {
         self.id = id
         self.parentId = parentId
         self.source = source
@@ -85,6 +75,11 @@ public struct Orb: Codable, Equatable, Sendable {
         self.activeAt = activeAt
         self.limited = limited
         self.limitProvider = limitProvider
+        self.model = model
+        self.level = level
+        self.snoozedUntil = snoozedUntil
+        self.queue = queue
+        self.pr = pr
     }
 }
 

@@ -71,10 +71,26 @@ check_range() {   # $1 = public base (may be empty), $2 = tip
     done
   done
 
-  terms="$(private_terms "$base")"
-  added="$( { git diff --no-color "${base:-$EMPTY_TREE}" "$tip" | grep -E '^\+' | grep -vE '^\+\+\+ ' || true; } ; for commit in $commits; do git show -s --format='%B' "$commit"; done)"
+  terms="$(private_terms "$base" | grep -v '^$' || true)"
+  # Each commit's own diff, not only the net one: a term added in one commit and removed in the
+  # next is still in the history that gets pushed.
+  added="$( { git diff --no-color "${base:-$EMPTY_TREE}" "$tip" | grep -E '^\+' | grep -vE '^\+\+\+ ' || true; }
+    for commit in $commits; do
+      { git diff-tree --no-color -r -p -m --root --no-commit-id "$commit" | grep -E '^\+' | grep -vE '^\+\+\+ ' || true; }
+      git show -s --format='%B' "$commit"
+    done)"
   hits="$(printf '%s\n' "$added" | grep -oiwF -f <(printf '%s\n' "$terms") | sort -fu || true)"
   [ -n "$hits" ] && problems+="$(printf '  private term: %s\n' $hits)"$'\n'
+
+  # Added and renamed file names are scanned too (NUL-separated, so any name is safe). An
+  # underscore counts as a separator here, since a file name rarely has a space between words.
+  local path path_hits
+  for commit in $commits; do
+    while IFS= read -r -d '' path; do
+      path_hits="$(printf '%s\n' "${path//_/ }" | grep -oiwF -f <(printf '%s\n' "$terms") | sort -fu || true)"
+      [ -n "$path_hits" ] && problems+="$(printf '  private term in a file name (%s): %s\n' "$(git show -s --format='%h' "$commit")" "$(printf '%s' "$path_hits" | tr '\n' ' ')")"$'\n'
+    done < <(git diff-tree -r -z --name-only --diff-filter=AR -M -m --root --no-commit-id "$commit")
+  done
 
   [ -z "$problems" ] && return 0
   printf 'publish: refusing to publish %s..%s:\n%s' "${base:0:7}" "${tip:0:7}" "$problems" >&2

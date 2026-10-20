@@ -170,24 +170,26 @@ extension ModelWidgetChecks {
             try expectEqual(marked.filter { $0.limited == true }.map(\.id), ["t3:a", "t3:a1", "t3:a1x", "t3:c1"])
             try expectEqual(marked.map(\.limitProvider), ["codex", "codex", "codex", nil, nil, "codex"])
             try expectEqual(marked.map(\.id), orbs.map(\.id))
-            let json = OrbitSnapshot(orbs: Array(marked.prefix(4)), limits: [ProviderLimit(provider: "codex", since: 2_000_000.5)]).json()
+            let json = FeedJSON.encode(FeedState(orbs: Array(marked.prefix(4)), limits: [ProviderLimit(provider: "codex", since: 2_000_000.5)]))
             try expect(json.contains(#""limits":[{"provider":"codex","since":2000000.5}]"#), json)
             try expect(json.contains(#""limitProvider":"codex","limited":true"#), json)
             try expectEqual(json.components(separatedBy: #""limited""#).count - 1, 3)
-            try expectEqual(OrbitSnapshot(orbs: orbs).json().contains("limited"), false)
+            try expectEqual(FeedJSON.encode(FeedState(orbs: orbs)).contains("limited"), false)
         }
 
-        suite.check("A limited orb keeps its identity and its place under the removal hold") {
+        suite.check("A limited orb keeps its identity and its place in the feed") {
             let face = OrbIcon.monogram("WS", color: "#000000")
-            var hold = OrbitRemovalHold()
+            let start = Date(timeIntervalSince1970: 2_000_000)
+            var world = FeedWorld()
             let parent = Orb(id: "t3:p", source: .t3, projectIcon: face, provider: "codex")
             let child = Orb(id: "t3:p1", parentId: "t3:p", source: .t3, projectIcon: face, provider: "codex")
-            _ = hold.apply(OrbitSnapshot(orbs: [parent, child]))
+            _ = world.absorb([.t3: FeedReading(orbs: [parent, child])], now: start)
             let limited = ProviderLimitText.mark([parent, child], hits: ["t3:p": "codex"])
-            try expectEqual(hold.apply(OrbitSnapshot(orbs: limited)).orbs.map(\.id), ["t3:p", "t3:p1"])
-            // Its thread drops out of T3's list for a poll: held as it last was, still limited.
-            let gap = hold.apply(OrbitSnapshot(orbs: []))
-            try expectEqual(gap.orbs.map(\.limited), [true, true])
+            _ = world.absorb([.t3: FeedReading(orbs: limited)], now: start.addingTimeInterval(2))
+            try expectEqual(world.state.orbs.map(\.id), ["t3:p", "t3:p1"])
+            // Its thread drops out of T3's list for a poll: kept as it last was, still limited.
+            _ = world.absorb([.t3: FeedReading(orbs: [])], now: start.addingTimeInterval(4))
+            try expectEqual(world.state.orbs.map(\.limited), [true, true])
         }
     }
 }

@@ -1,7 +1,6 @@
 import ModelWidgetCore
 import SwiftUI
 
-/// Gear-menu items for idle-hide: the threshold picker and the last time it fired.
 struct IdleHideMenuItems: View {
     @AppStorage(IdleHidePolicy.defaultsKey) private var idleHideMinutes = IdleHidePolicy.defaultMinutes
     @AppStorage(IdleHideRecord.defaultsKey) private var lastIdleHide: String?

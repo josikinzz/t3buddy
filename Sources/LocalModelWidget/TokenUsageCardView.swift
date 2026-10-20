@@ -127,7 +127,6 @@ private struct TokenUsageLegend: View {
     }
 }
 
-/// Fresh input plus output, stacked by provider.
 private struct TokenFreshChart: View {
     let presentation: TokenUsagePresentation
 

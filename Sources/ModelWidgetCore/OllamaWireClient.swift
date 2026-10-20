@@ -2,7 +2,6 @@ import Foundation
 
 struct OllamaWireClient {
     private static let providerID = "ollama"
-    private static let loadKeepAlive = "1h"
     private static let unloadKeepAlive = "0"
 
     private let baseURL: URL
@@ -21,10 +20,6 @@ struct OllamaWireClient {
     func loadedModels() async throws -> [LoadedModel] {
         let response: RunningModelsResponse = try await get(.runningModels)
         return response.models.compactMap { $0.loadedModel(providerID: Self.providerID) }
-    }
-
-    func loadModel(named name: String) async throws {
-        try await generate(modelName: name, keepAlive: Self.loadKeepAlive)
     }
 
     func unloadModel(named name: String) async throws {

@@ -1,3 +1,4 @@
+import AppKit
 import Foundation
 
 /// A project's manual icon from T3 (`projectIcon` on `t3_project_list` / `t3_project_read`).
@@ -143,6 +144,14 @@ public final class ProjectIconResolver: @unchecked Sendable {
     public init(fileManager: FileManager = .default, transcodeToPNG: Transcoder? = nil) {
         self.fileManager = fileManager
         self.transcodeToPNG = transcodeToPNG
+    }
+
+    /// The transcoder the helper and the app use: any image AppKit opens, as a 64 pt PNG.
+    public static func pngFromImageFile(_ url: URL) -> Data? {
+        guard let image = NSImage(contentsOf: url) else { return nil }
+        var rect = NSRect(x: 0, y: 0, width: 64, height: 64)
+        guard let cgImage = image.cgImage(forProposedRect: &rect, context: nil, hints: nil) else { return nil }
+        return NSBitmapImageRep(cgImage: cgImage).representation(using: .png, properties: [:])
     }
 
     /// The orb face for a project. `title` names the monogram; it defaults to the folder name.

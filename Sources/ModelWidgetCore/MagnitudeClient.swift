@@ -1,7 +1,7 @@
 import Foundation
 
 /// Magnitude local inference service. The loaded model is read from its OpenAI-compatible
-/// `/inference/v1/models`; installed models and load/stop go through the `magnitude` CLI,
+/// `/inference/v1/models`; installed models and stop go through the `magnitude` CLI,
 /// which has no JSON output, so `models status` is parsed by header column offsets.
 public final class MagnitudeClient: ModelProvider {
     public let id = "magnitude"
@@ -50,11 +50,6 @@ public final class MagnitudeClient: ModelProvider {
                 processor: "Metal"
             )
         }
-    }
-
-    public func loadModel(named name: String) async throws {
-        guard let executable else { throw MagnitudeError.cliMissing }
-        _ = try await run(executable, ["models", "load", name])
     }
 
     public func unloadModel(named name: String) async throws {

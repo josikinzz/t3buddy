@@ -4,13 +4,17 @@ import ModelWidgetCore
 import SwiftUI
 
 /// Refreshes the subscription usage card (Claude, Codex and Kimi accounts) every 5 minutes, caching rows on disk.
+/// Grok Bot's row comes from the reading Grok Bot cached itself; it is re-read every minute and never cached
+/// here, so its age and whether its week has reset are judged against the current time.
 @MainActor
 final class SubscriptionPanelRuntime: ObservableObject {
     @Published var rows: [SubscriptionUsage] = []
+    @Published var grok: SubscriptionUsage? = GrokUsageReader.read(now: Date())
     @Published var updated: Date?
     @Published var refreshing = false
     @Published var message: String?
     private var timer: Timer?
+    private var grokTimer: Timer?
     private let cache = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Caches/LocalModelWidget/subscriptions.json")
 
     init() {
@@ -21,15 +25,23 @@ final class SubscriptionPanelRuntime: ObservableObject {
     }
 
     func startRefreshing() {
+        timer?.invalidate()
+        grokTimer?.invalidate()
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
         }
+        grokTimer = Timer.scheduledTimer(withTimeInterval: 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in self?.grok = GrokUsageReader.read(now: Date()) }
+        }
     }
+
+    var shownRows: [SubscriptionUsage] { rows + (grok.map { [$0] } ?? []) }
 
     func refresh() {
         guard !refreshing else { return }
         refreshing = true
+        grok = GrokUsageReader.read(now: Date())
         Task {
             let fresh = await SubscriptionUsageReader.read()
             rows = fresh.map { row in

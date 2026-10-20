@@ -1,7 +1,7 @@
 import Foundation
 
 /// PrismML llama-server fork running in router mode (`bonsai-serve`).
-/// Router endpoints: `GET /models`, `POST /models/load`, `POST /models/unload`, `GET /slots`.
+/// Router endpoints: `GET /models`, `POST /models/unload`, `GET /slots`.
 public final class BonsaiClient: ModelProvider {
     public let id = "bonsai"
     public let displayName = "Bonsai"
@@ -29,10 +29,6 @@ public final class BonsaiClient: ModelProvider {
             loaded.append(model.loadedModel(providerID: id, processor: await slotSummary(model: model.id)))
         }
         return loaded
-    }
-
-    public func loadModel(named name: String) async throws {
-        try await post("models/load", model: name)
     }
 
     public func unloadModel(named name: String) async throws {

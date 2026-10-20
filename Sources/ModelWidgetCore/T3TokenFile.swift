@@ -47,6 +47,9 @@ public final class T3TokenFileStore: T3TokenStoring, @unchecked Sendable {
     public let url: URL
     private let lock = NSLock()
     private var cached: T3MCPCredentials?
+    /// The file's modification date when `cached` was read: the helper and the app's fallback
+    /// share the file, so one sees a token the other minted.
+    private var cachedStamp: Date?
 
     public init(url: URL = T3TokenFileStore.defaultURL) {
         self.url = url
@@ -58,30 +61,41 @@ public final class T3TokenFileStore: T3TokenStoring, @unchecked Sendable {
     public func load() -> T3MCPCredentials {
         lock.lock()
         defer { lock.unlock() }
-        if let cached { return cached }
-        let loaded = (try? Data(contentsOf: url)).flatMap { try? Self.decoder.decode(T3MCPCredentials.self, from: $0) } ?? T3MCPCredentials()
+        let stamp = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.modificationDate] as? Date
+        if let cached, stamp == cachedStamp { return cached }
+        let loaded = (try? Data(contentsOf: url)).flatMap { try? Self.decoder.decode(T3MCPCredentials.self, from: $0) } ?? cached ?? T3MCPCredentials()
         cached = loaded
+        cachedStamp = stamp
         return loaded
     }
 
     public func save(_ credentials: T3MCPCredentials) {
+        saveVerified(credentials)
+    }
+
+    /// Saves, then reads the file back: true only when the file holds exactly the bytes written. Bytes,
+    /// not decoded values: the file keeps whole seconds, so a fractional expiry never reads back equal.
+    @discardableResult
+    public func saveVerified(_ credentials: T3MCPCredentials) -> Bool {
         lock.lock()
         cached = credentials
         lock.unlock()
+        let written: Data
         do {
-            try write(credentials)
+            written = try write(credentials)
         } catch {
             NSLog("T3boii: could not write the T3 token file (\(error.localizedDescription))")
+            return false
         }
+        return (try? Data(contentsOf: url)) == written
     }
 
-    private func write(_ credentials: T3MCPCredentials) throws {
+    private func write(_ credentials: T3MCPCredentials) throws -> Data {
         let manager = FileManager.default
         let folder = url.deletingLastPathComponent()
         try manager.createDirectory(at: folder, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: folder.path)
         let data = try Self.encoder.encode(credentials)
-        // Write a private temporary file beside the target, then swap it in.
         let temporary = folder.appendingPathComponent(".\(url.lastPathComponent).\(UUID().uuidString)")
         guard manager.createFile(atPath: temporary.path, contents: data, attributes: [.posixPermissions: 0o600]) else {
             throw CocoaError(.fileWriteUnknown)
@@ -91,6 +105,7 @@ public final class T3TokenFileStore: T3TokenStoring, @unchecked Sendable {
             try? manager.removeItem(at: temporary)
             throw POSIXError(POSIXErrorCode(rawValue: code) ?? .EIO)
         }
+        return data
     }
 
     private static let encoder: JSONEncoder = {
@@ -105,4 +120,19 @@ public final class T3TokenFileStore: T3TokenStoring, @unchecked Sendable {
         decoder.dateDecodingStrategy = .iso8601
         return decoder
     }()
+}
+
+/// Adopts the token an earlier build kept in the Keychain. The caller deletes the Keychain item only
+/// after `.moved`: a payload that cannot be decoded, or a file that cannot be written, leaves it in place.
+public enum LegacyT3TokenImport {
+    public enum Outcome: Equatable, Sendable {
+        case moved
+        case undecodable
+        case notSaved
+    }
+
+    public static func adopt(_ legacy: Data, into store: T3TokenFileStore) -> Outcome {
+        guard let token = try? JSONDecoder().decode(T3MCPToken.self, from: legacy) else { return .undecodable }
+        return store.saveVerified(T3MCPCredentials(token: token)) ? .moved : .notSaved
+    }
 }

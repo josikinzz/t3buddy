@@ -2,7 +2,6 @@ import LocalModelWidgetPanel
 import ModelWidgetCore
 import SwiftUI
 
-/// Subscription usage per account: usable accounts first, emails pixelated until clicked.
 struct SubscriptionPanelView: View {
     @ObservedObject var runtime: SubscriptionPanelRuntime
     @Binding var windowMode: DesktopPanelWindowMode
@@ -24,7 +23,7 @@ struct SubscriptionPanelView: View {
                     WindowModeMenuSection(mode: $windowMode)
                     IdleHideMenuItems()
                     Toggle("T3boii sounds", isOn: $petSounds)
-                    Button("Connect T3") { NotificationCenter.default.post(name: OrbitRuntime.connectT3Notification, object: nil) }
+                    Button("Connect T3") { NotificationCenter.default.post(name: FeedClient.connectT3Notification, object: nil) }
                 } label: {
                     Image(systemName: "gearshape").font(.system(size: 13, weight: .semibold)).frame(width: 24, height: 22)
                 }
@@ -32,7 +31,7 @@ struct SubscriptionPanelView: View {
                 .accessibilityLabel("Widget settings")
             }
             VStack(alignment: .leading, spacing: 8) {
-                SubscriptionRows(rows: runtime.rows)
+                SubscriptionRows(rows: runtime.shownRows)
                 if let message = runtime.message { Text(message).font(.system(size: 11)).foregroundStyle(.secondary) }
             }
             TimelineView(.periodic(from: .now, by: 60)) { context in
@@ -79,21 +78,24 @@ private struct SubscriptionRow: View {
             HStack {
                 Text(row.provider).font(.system(size: 12, weight: .semibold))
                 Spacer()
-                if !row.plan.isEmpty { Text(row.plan.capitalized).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary) }
+                // A plan id like "pro" is capitalised; a display label like Grok Bot's keeps its own casing.
+                if !row.plan.isEmpty { Text(row.plan == row.plan.lowercased() ? row.plan.capitalized : row.plan).font(.system(size: 10, weight: .medium)).foregroundStyle(.secondary) }
             }
-            Button(action: toggleEmail) {
-                Group {
-                    if emailRevealed {
-                        Text(row.email).font(.system(size: 10)).lineLimit(1).truncationMode(.middle)
-                    } else {
-                        PixelatedText(text: row.email, fontSize: 10)
-                    }
-                }.foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).clipped().contentShape(Rectangle())
+            if !row.email.isEmpty {
+                Button(action: toggleEmail) {
+                    Group {
+                        if emailRevealed {
+                            Text(row.email).font(.system(size: 10)).lineLimit(1).truncationMode(.middle)
+                        } else {
+                            PixelatedText(text: row.email, fontSize: 10)
+                        }
+                    }.foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading).clipped().contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .help(emailRevealed ? "Click to hide email" : "Click to show email for \(Int(EmailMask.revealSeconds)) s")
+                .accessibilityLabel(emailRevealed ? row.email : "Hidden \(row.provider) email")
+                .accessibilityHint(emailRevealed ? "Hides the email" : "Shows the email for \(Int(EmailMask.revealSeconds)) seconds")
             }
-            .buttonStyle(.plain)
-            .help(emailRevealed ? "Click to hide email" : "Click to show email for \(Int(EmailMask.revealSeconds)) s")
-            .accessibilityLabel(emailRevealed ? row.email : "Hidden \(row.provider) email")
-            .accessibilityHint(emailRevealed ? "Hides the email" : "Shows the email for \(Int(EmailMask.revealSeconds)) seconds")
             ForEach(row.windows) { window in
                 VStack(alignment: .leading, spacing: 3) {
                     HStack {
@@ -106,6 +108,9 @@ private struct SubscriptionRow: View {
                         Text(resetText(window.reset, now: context.date)).font(.system(size: 9)).foregroundStyle(.secondary).monospacedDigit()
                     }
                 }
+            }
+            if let note = row.note {
+                Text(note).font(.system(size: 10)).foregroundStyle(.secondary)
             }
             if let error = row.error {
                 Text(error + (row.checked != nil ? " · stale data" : ""))

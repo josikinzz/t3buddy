@@ -20,7 +20,7 @@ Everything lives in one transparent window pinned to the desktop (below normal w
 - Each active T3 Code thread is an orb on a halo around him, showing the project's icon and the provider's logo (Claude, Codex, Cursor, Grok, Kimi, OpenCode, Pi, Antigravity, or a generic mark).
 - Subagents circle their parent thread as smaller satellite orbs. This covers both threads delegated through T3 Code and subagents a provider spawns itself (for example Claude's Agent tool).
 - A short line about what each thread is doing ("reading pet.js", "running swift build", "thinking…") trails behind its orb.
-- A thread waiting on you (a pending question or approval) is held out in front of him, pulsing amber. Clicking it opens that thread in T3 Code's web UI.
+- A thread waiting on an answer floats beside his head as the dot of a lit amber 3D mark: `?` for a question, `!` for an approval. An approval is for the thread's own bot to decide; the `!` shows it deciding, not a request to you. Clicking the orb opens that thread in T3 Code's web UI.
 - A failed thread's orb cracks and turns red and stays until you hover or click it, for up to ten minutes.
 - When a provider hits a rate or usage limit, he cries (tears, sobs, a sad sound), and each thread it refused dies: its orb darkens under a big copy of the provider's logo and crumbles away. He stays glum until the limit clears. Limits are read from T3 Code itself: the error T3 records when a provider refuses a run ("Usage limit reached", "You've reached your 5-hour usage limit", "Selected model is at capacity", and so on), mapped to the provider whose run it was.
 - If the Grok Bot app is installed, its in-flight agents appear as orbs too.
@@ -40,7 +40,7 @@ Everything lives in one transparent window pinned to the desktop (below normal w
 - macOS 14 (Sonoma) or later (`Package.swift` sets `.macOS(.v14)`).
 - A Swift 5.9 or newer toolchain (`swift-tools-version: 5.9`), so Xcode 15 or newer, or the matching Command Line Tools. Built and checked here with Swift 6.3.
 - For the T3 Code integration:
-  - A T3 Code server running on the same Mac and listening on `http://127.0.0.1:3773`. The address is fixed in source (`T3ThreadSource.defaultOrigin`); there is no setting or environment variable for it.
+  - A T3 Code server running on the same Mac on a loopback address. The feed reads its address from `~/.t3/userdata/server-runtime.json` (`origin`, or `port` on `127.0.0.1`) and follows it when T3 restarts; `http://127.0.0.1:3773` is only the starting guess.
   - T3 Code's runtime installed under `~/.t3/runtime`, so the app can find the `t3` CLI (see below). It does not look for `t3` on `PATH`.
 - Optional, for the other cards: Bonsai, Magnitude or Ollama; CLI Proxy, Codex or Kimi sign-ins.
 
@@ -51,16 +51,17 @@ From the repository root:
 ```bash
 swift build                                                # debug build
 swift run LocalModelWidget                                 # run unpackaged, for quick checks
-swift run --scratch-path .build-dev ModelWidgetChecks      # the check suite (an executable, not XCTest)
+scripts/verify.sh                                          # build, checks and pet tests; --full adds the T3 restart drill
 ```
 
 To build a signed (ad-hoc) app bundle and run it:
 
 ```bash
-scripts/check_widget.sh      # lint the generated plists, run the checks, build
 scripts/package_app.sh       # release build into "outputs/Local Model Widget.app"
-scripts/run_widget.sh        # package if needed, then open the app
+scripts/run_widget.sh        # open the app, packaging first only if there is no bundle yet
 ```
+
+`run_widget.sh` and `install_launch_agent.sh` reuse an existing bundle as it is, so after changing the source run `package_app.sh` first, or you will be looking at the old app.
 
 To start it at login with a LaunchAgent (label `local.codex.LocalModelWidget`, logs in `/tmp/local-model-widget.out.log` and `/tmp/local-model-widget.err.log`):
 
@@ -69,7 +70,7 @@ scripts/install_launch_agent.sh
 scripts/uninstall_launch_agent.sh
 ```
 
-`scripts/deployment.sh paths|check|info-plist|launch-agent-plist` prints or lints the generated paths and plists without installing anything. The scripts build into `.build-20261013/` and write to `outputs/`; both are git-ignored.
+`scripts/deployment.sh paths|check|info-plist|launch-agent-plist` prints or lints the generated paths and plists without installing anything. The scripts build into `.build-20261013/` (or `DEPLOYMENT_BUILD_DIR`) and write to `outputs/` (or `DEPLOYMENT_OUTPUT_DIR`); both are git-ignored.
 
 Prefer the packaged app for real use; the LaunchAgent points at it. The app has no Dock icon (it is an accessory app); quit it from the Local Models, Process Memory or Tokens gear menu.
 
@@ -81,7 +82,9 @@ With the app running, `scripts/demo.sh` plays T3boii's scripted demo (about 44 s
 
 ## How the T3 Code connection works
 
-The app talks to T3 Code's MCP server over Streamable HTTP at `POST http://127.0.0.1:3773/mcp` with a bearer token, using only read tools: `orchestrator_capabilities`, `t3_environment_read`, `t3_project_list`, `t3_thread_list` and `t3_thread_read`. It polls every five seconds. A thread that has just failed is read once more (its last eight timeline items) to see whether its provider refused it for a rate or usage limit.
+The app does not poll T3 itself. It starts a helper, `t3boii-feed` (in the bundle's `Contents/Helpers/`), which talks to T3 Code's MCP server over Streamable HTTP at `POST <origin>/mcp` with a bearer token, using only read tools: `orchestrator_capabilities`, `t3_environment_read`, `t3_project_list`, `t3_thread_list`, `t3_thread_read`, `t3_pending_request_list`, `t3_queue_list` and `list_scheduled_tasks`, averaging at most three calls a second. It polls every two seconds while threads are active and every five when none are, backing off while T3 cannot be read. `<origin>` comes from `~/.t3/userdata/server-runtime.json`, the only T3 file it reads; a new pid or start time there is a T3 restart, which it reconciles without swallowing anything. A thread that has just failed is read once more (its last eight timeline items) to see whether its provider refused it for a rate or usage limit.
+
+The helper serves what it sees to the app on `127.0.0.1` as a server-sent event stream, behind a per-start bearer token written with its port to `~/Library/Application Support/LocalModelWidget/feed.json` (mode 0600). The app relays it to the pet page every 100 ms; the page never sees a token and makes no network requests. If the helper is gone or silent, the app polls T3 itself until the helper is back.
 
 It gets its token without a browser, through T3 Code's MCP OAuth endpoints (authorization code with PKCE):
 
@@ -95,9 +98,9 @@ The `t3` CLI is found from `~/.t3/runtime/service-state.json` (`activeVersion` �
 
 If no usable token exists, the app tries to connect on its own, at most once every 15 minutes (immediately again if T3 Code was simply not reachable). **Connect T3** in the Subscription Usage card's gear menu forces a fresh connection right away.
 
-Clicking an orb opens `http://127.0.0.1:3773/<environmentId>/<threadId>`; the app only opens links to `127.0.0.1`, `localhost` or `::1`.
+Clicking an orb opens `<origin>/<environmentId>/<threadId>`; the app only opens links to `127.0.0.1`, `localhost` or `::1`.
 
-Problems never show in the UI: the orbit just stays empty, and the app logs one line per new kind of problem (prefix `T3boii:`) through `NSLog`.
+Problems never show as text in the UI. While T3 cannot be read the orbit keeps what it last saw and greys slightly; nothing is swallowed because T3 was unreachable. The helper and the app log one line per new kind of problem (prefix `T3boii:` or `t3boii-feed:`).
 
 ## If you are an agent setting this up for someone
 
@@ -109,7 +112,7 @@ Follow these steps in order. Everything here comes from the source; nothing else
 2. T3 Code is installed through its normal runtime, so these exist:
    - `~/.t3/runtime/service-state.json` with an `activeVersion`, or at least one version folder in `~/.t3/runtime/versions/`;
    - an executable `~/.t3/runtime/versions/<version>/t3`.
-3. The T3 Code server is running and answers on `http://127.0.0.1:3773`. The app cannot be pointed at another host or port without editing `T3ThreadSource.defaultOrigin`.
+3. The T3 Code server is running and `~/.t3/userdata/server-runtime.json` names its loopback `origin` or `port`.
 4. The person's T3 Code server has its MCP endpoint and MCP OAuth endpoints (`/mcp`, `/oauth/mcp/*`) available, and its `t3 auth pairing create` accepts `--scope orchestration:read`.
 
 **Check the prerequisites**
@@ -119,15 +122,16 @@ cat ~/.t3/runtime/service-state.json                       # note activeVersion
 ls ~/.t3/runtime/versions/                                 # the t3 binary lives in <version>/t3
 T3="$HOME/.t3/runtime/versions/<activeVersion>/t3"
 "$T3" auth pairing create --help                           # must list --scope, --ttl, --label, --json
-curl -s -o /dev/null -w '%{http_code}\n' -X POST http://127.0.0.1:3773/mcp
+python3 -c 'import json,os; r=json.load(open(os.path.expanduser("~/.t3/userdata/server-runtime.json"))); print(r.get("origin") or "http://127.0.0.1:%s" % r["port"])'
+curl -s -o /dev/null -w '%{http_code}\n' -X POST <origin>/mcp
 ```
 
-The last command should print `401` (the server is up and wants a token). `000` means nothing is listening on that port: start T3 Code first.
+The last command should print `401` (the server is up and wants a token). `000` means nothing is listening there: start T3 Code first.
 
 **Build, install and connect**
 
-1. From the repository root, run `scripts/check_widget.sh`. It must end with `All checks passed.` and a successful build.
-2. Run `scripts/run_widget.sh` to try it, or `scripts/install_launch_agent.sh` to also start it at login.
+1. From the repository root, run `scripts/verify.sh`. It must end with `verify: all passed`.
+2. Run `scripts/package_app.sh`, then `scripts/run_widget.sh` to try it, or `scripts/install_launch_agent.sh` to also start it at login.
 3. The app connects by itself on its first poll. If it was started before T3 Code, either wait (it retries on the next poll when T3 Code was unreachable) or choose **Connect T3** from the Subscription Usage card's gear menu.
 
 **Verify the connection**
@@ -141,7 +145,8 @@ The last command should print `401` (the server is up and wants a token). `000` 
 
 | Log line | Cause | Fix |
 |---|---|---|
-| `T3 not reachable (…); orbit empty` | Nothing answers on `127.0.0.1:3773`, or a request took longer than 6 s. | Start the T3 Code server; check the port with the `curl` above. |
+| `T3 not reachable (…); orbit kept as last seen` | Nothing answers at the origin in `server-runtime.json`, or a request took too long. | Start the T3 Code server; check it with the `curl` above. |
+| `the feed helper is gone; the app is polling T3 itself until it is back` | `t3boii-feed` is missing from the bundle or keeps exiting. | Run `scripts/package_app.sh`; the helper's own log lines start with `t3boii-feed:`. |
 | `T3 MCP connect failed (noCLI)` | No executable `t3` under `~/.t3/runtime/versions/`. | Install T3 Code's runtime; check `service-state.json` names a version that exists. |
 | `T3 MCP connect failed (pairingFailed(…))` | `t3 auth pairing create` failed or printed no `credential`. | Run the pairing command from step 2 of "How the T3 Code connection works" by hand and read its error. If T3 Code keeps its data somewhere other than its default (for example `T3CODE_HOME` or `--base-dir`), note that the app runs the CLI without either. |
 | `T3 MCP connect failed (cliTimedOut)` | The CLI took more than 15 s. | Check the CLI runs promptly by hand. |
@@ -154,20 +159,18 @@ After a failed automatic connect the app waits up to 15 minutes before trying ag
 ## Project layout
 
 ```
-Package.swift
 Sources/
-  ModelWidgetCore/        data sources and pure logic: T3 MCP client and OAuth, thread → orb mapping,
-                          Grok Bot roster, model hosts, subscription and token usage, processes
-  LocalModelWidgetPanel/  layout and presentation logic shared by the cards (masonry grid, palettes)
-  LocalModelWidget/       the AppKit/SwiftUI app: dashboard window, cards, pet window, runtimes
-Tests/ModelWidgetChecks/  check suite, run as an executable (swift run ModelWidgetChecks)
-Resources/
-  Pet/                    T3boii's WKWebView page (three.js, vendored under Pet/vendor), model and badges
-  ModelBenchmarks.*       the benchmark document the Local Models card opens
-scripts/                  package, run and LaunchAgent scripts (deployment.sh holds the shared settings)
-DESIGN.md                 visual and behaviour spec, including the pet
-PRODUCT.md                who it is for and what each part does
+  ModelWidgetCore/        data sources and pure logic; Feed/ holds the T3boii feed (engine, world, schema, server)
+  LocalModelWidgetPanel/  layout and presentation logic shared by the cards
+  LocalModelWidget/       the AppKit/SwiftUI app: dashboard, cards, pet window, feed client and helper supervisor
+  T3boiiFeed/             the t3boii-feed helper's entry point
+Tests/ModelWidgetChecks/  Swift checks, run as an executable
+Tests/Pet/                Node tests for the pet page's modules
+Resources/Pet/            T3boii's WKWebView page (three.js vendored under Pet/vendor), model, badges, sounds
+scripts/                  verify, package, run, LaunchAgent, demo and publish scripts
 ```
+
+`AGENTS.md` maps which file owns what, for anyone changing the code.
 
 ## Licence
 

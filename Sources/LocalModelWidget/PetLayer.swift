@@ -28,7 +28,8 @@ final class PetLayer: NSObject, WKNavigationDelegate {
     private var sessionInactive = false
     private var pageReady = false
     /// The last orbit snapshot JSON, resent whenever the page (re)loads.
-    private var orbitJSON: String?
+    /// The feed's last state, `{"state": …}`, for a page that reloads.
+    private var feedStateJSON: String?
     private let defaults = UserDefaults.standard
 
     func start() {
@@ -134,10 +135,10 @@ final class PetLayer: NSObject, WKNavigationDelegate {
         PetLayerGeometry.layerFrame(mainScreen: NSScreen.main?.frame, screens: NSScreen.screens.map(\.frame))
     }
 
-    /// Hands the page a new orbit snapshot (JSON for `window.t3boii.update`).
-    func updateOrbit(json: String) {
-        orbitJSON = json
-        callPage("window.t3boii.update(\(json))")
+    /// Hands the page what changed (`{events, state}` for `window.t3boii.feed`).
+    func feed(json: String, state: String?) {
+        if let state { feedStateJSON = #"{"state":\#(state)}"# }
+        callPage("window.t3boii.feed(\(json))")
     }
 
     /// Plays T3boii's scripted demo (demo.js) with the owner's real projects; nil lets the page
@@ -196,7 +197,7 @@ final class PetLayer: NSObject, WKNavigationDelegate {
                 updatePause()
                 updateReducedMotion()
                 updateMuted(force: true)
-                if let orbitJSON { callPage("window.t3boii.update(\(orbitJSON))") }
+                if let feedStateJSON { callPage("window.t3boii.feed(\(feedStateJSON))") }
             } else {
                 NSLog("T3boii: page failed to start: \(body["error"] ?? "unknown error")")
             }

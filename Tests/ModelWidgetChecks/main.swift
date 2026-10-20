@@ -57,43 +57,6 @@ struct ModelWidgetChecks {
         }
 
 
-        await suite.check("session activate unloads loaded models across hosts before loading target") { @MainActor in
-            let ollama = MockModelProvider(
-                id: "ollama",
-                installed: [
-                    model("alpha"),
-                    model("beta")
-                ],
-                loaded: [
-                    loaded("alpha")
-                ]
-            )
-            let lmStudio = MockModelProvider(
-                id: "lmstudio",
-                installed: [
-                    model("beta", providerID: "lmstudio")
-                ],
-                loaded: [
-                    loaded("gamma", providerID: "lmstudio")
-                ]
-            )
-            let session = LocalModelSession(providers: [ollama, lmStudio])
-
-            let result = try await session.activateModel(
-                with: LocalModelIdentity(providerID: "lmstudio", name: "beta")
-            )
-
-            try expect(result.didRun, "Expected session activation to run")
-            try expectEqual(ollama.events, [
-                .unload("alpha")
-            ])
-            try expectEqual(lmStudio.events, [
-                .unload("gamma"),
-                .load("beta")
-            ])
-            try expectEqual(result.state.activeModelID, LocalModelIdentity(providerID: "lmstudio", name: "beta"))
-        }
-
         await suite.check("session refresh collapses external multi-load to newest expiry") { @MainActor in
             let old = Date(timeIntervalSince1970: 100)
             let newest = Date(timeIntervalSince1970: 200)
@@ -166,17 +129,13 @@ struct ModelWidgetChecks {
                     loaded("beta", sizeBytes: 987)
                 ]
             )
-            let viewModel = WidgetViewModel(
-                providers: [provider],
-                memorySampler: FixedMemorySampler(snapshot: .init(totalBytes: 100, usedBytes: 42))
-            )
+            let viewModel = WidgetViewModel(providers: [provider])
 
             await viewModel.refresh()
 
             try expectEqual(viewModel.activeModelID, LocalModelIdentity(providerID: "ollama", name: "beta"))
             try expectEqual(viewModel.models.map(\.name), ["beta", "alpha"])
             try expectEqual(viewModel.models.map(\.isLoaded), [true, false])
-            try expectClose(viewModel.memory.usedFraction, 0.42)
         }
 
         await suite.check("refresh preserves installed order when no model is active") { @MainActor in
@@ -188,10 +147,7 @@ struct ModelWidgetChecks {
                 ],
                 loaded: []
             )
-            let viewModel = WidgetViewModel(
-                providers: [provider],
-                memorySampler: FixedMemorySampler(snapshot: .init(totalBytes: 100, usedBytes: 42))
-            )
+            let viewModel = WidgetViewModel(providers: [provider])
 
             await viewModel.refresh()
 
@@ -199,77 +155,22 @@ struct ModelWidgetChecks {
             try expectEqual(viewModel.models.map(\.name), ["alpha", "beta", "gamma"])
         }
 
-        await suite.check("activate uses local model session and refreshes state") { @MainActor in
-            let provider = MockModelProvider(
-                installed: [
-                    model("alpha"),
-                    model("beta")
-                ],
-                loaded: [
-                    loaded("alpha")
-                ]
-            )
-            let viewModel = WidgetViewModel(
-                providers: [provider],
-                memorySampler: FixedMemorySampler(snapshot: .init(totalBytes: 10, usedBytes: 5))
-            )
-
-            await viewModel.activate(model("beta"))
-
-            try expectEqual(provider.events, [
-                .unload("alpha"),
-                .load("beta")
-            ])
-            try expect(viewModel.isBusy == false, "Expected activate to finish with isBusy false")
-            try expectEqual(viewModel.pendingModelID, Optional<LocalModelIdentity>.none)
-            try expectEqual(viewModel.statusText, "Loaded beta")
-        }
-
-        await suite.check("activate ignores already loaded model") { @MainActor in
-            let provider = MockModelProvider(
-                installed: [
-                    model("alpha")
-                ],
-                loaded: [
-                    loaded("alpha")
-                ]
-            )
-            let viewModel = WidgetViewModel(
-                providers: [provider],
-                memorySampler: FixedMemorySampler(snapshot: .init(totalBytes: 10, usedBytes: 5))
-            )
+        await suite.check("a second Unload while one is running is ignored and the busy flag clears afterwards") { @MainActor in
+            let provider = BlockingMockModelProvider(installed: [model("alpha")], loaded: [loaded("alpha")])
+            let viewModel = WidgetViewModel(providers: [provider])
             await viewModel.refresh()
 
-            await viewModel.activate(model("alpha"))
+            let firstUnload = Task { await viewModel.unloadActiveModel() }
+            await provider.waitUntilUnloadAttempted()
+            try expect(viewModel.isBusy, "Expected the view model to be busy while unloading")
+            try expectEqual(viewModel.statusText, "Unloading")
+            await viewModel.unloadActiveModel()
+            provider.finishUnload()
+            await firstUnload.value
 
-            try expectEqual(provider.events, [])
-            try expectEqual(viewModel.statusText, "Loaded alpha")
-        }
-
-        await suite.check("busy view model ignores overlapping activation") { @MainActor in
-            let provider = BlockingMockModelProvider(
-                installed: [
-                    model("alpha"),
-                    model("beta")
-                ],
-                loaded: []
-            )
-            let viewModel = WidgetViewModel(
-                providers: [provider],
-                memorySampler: FixedMemorySampler(snapshot: .init(totalBytes: 10, usedBytes: 5))
-            )
-
-            let firstActivation = Task { await viewModel.activate(model("alpha")) }
-            await provider.waitUntilLoadAttempted()
-            try expectEqual(viewModel.pendingModelID, LocalModelIdentity(providerID: "ollama", name: "alpha"))
-            await viewModel.activate(model("beta"))
-            provider.finishLoad()
-            await firstActivation.value
-
-            try expectEqual(provider.events, [
-                .load("alpha")
-            ])
-            try expect(viewModel.isBusy == false, "Expected first activation to reset busy flag")
+            try expectEqual(provider.events, [.unload("alpha")])
+            try expect(viewModel.isBusy == false, "Expected busy flag to clear after the unload")
+            try expectEqual(viewModel.activeModelID, Optional<LocalModelIdentity>.none)
         }
 
         suite.check("desktop panel layout owns the card width and leaves height to each card") {
@@ -287,12 +188,7 @@ struct ModelWidgetChecks {
 
         await suite.check("desktop panel presentation maps initial state") { @MainActor in
             await Task.yield()
-            let viewModel = WidgetViewModel(
-                providers: [
-                    MockModelProvider(installed: [], loaded: [])
-                ],
-                memorySampler: FixedMemorySampler(snapshot: .init(totalBytes: 100, usedBytes: 42))
-            )
+            let viewModel = WidgetViewModel(providers: [MockModelProvider(installed: [], loaded: [])])
 
             let presentation = DesktopPanelPresentation.make(from: viewModel)
 
@@ -303,30 +199,21 @@ struct ModelWidgetChecks {
             try expectEqual(presentation.quitButton.isEnabled, true)
         }
 
-        await suite.check("desktop panel presentation offers no Unload while a model is loading") { @MainActor in
-            let provider = BlockingMockModelProvider(
-                installed: [
-                    model("alpha"),
-                    model("beta", sizeBytes: 2_000_000)
-                ],
-                loaded: []
-            )
-            let viewModel = WidgetViewModel(
-                providers: [provider],
-                memorySampler: FixedMemorySampler(snapshot: .init(totalBytes: 10, usedBytes: 5))
-            )
+        await suite.check("desktop panel presentation disables Unload while a model is unloading") { @MainActor in
+            let provider = BlockingMockModelProvider(installed: [model("alpha")], loaded: [loaded("alpha")])
+            let viewModel = WidgetViewModel(providers: [provider])
             await viewModel.refresh()
 
-            let firstActivation = Task { await viewModel.activate(model("alpha")) }
-            await provider.waitUntilLoadAttempted()
+            let unload = Task { await viewModel.unloadActiveModel() }
+            await provider.waitUntilUnloadAttempted()
 
             let presentation = DesktopPanelPresentation.make(from: viewModel)
 
-            try expectEqual(presentation.card.line, "No model loaded")
-            try expectEqual(presentation.card.unloadButton, nil)
+            try expectEqual(presentation.card.line, "alpha · Ollama")
+            try expectEqual(presentation.card.unloadButton?.isEnabled, false)
 
-            provider.finishLoad()
-            await firstActivation.value
+            provider.finishUnload()
+            await unload.value
         }
 
         await suite.check("process panel presentation ranks memory consumers and maps color segments") { @MainActor in
@@ -442,23 +329,21 @@ struct ModelWidgetChecks {
             try expectEqual(OllamaURLProtocol.capturedRequests.map(\.path), ["/api/ps"])
         }
 
-        await suite.check("load and unload post Ollama generate keep_alive contract through provider interface") {
+        await suite.check("unload posts the Ollama generate keep_alive contract through provider interface") {
             let client = makeOllamaClient(stubs: [
                 "/api/generate": .json("{}")
             ])
 
-            try await client.loadModel(named: "gemma4:latest")
             try await client.unloadModel(named: "gemma4:latest")
 
-            try expectEqual(OllamaURLProtocol.capturedRequests.map(\.method), ["POST", "POST"])
-            try expectEqual(OllamaURLProtocol.capturedRequests.map(\.path), ["/api/generate", "/api/generate"])
-            let bodies = try OllamaURLProtocol.capturedRequests.map { try jsonDictionary($0.body) }
+            try expectEqual(OllamaURLProtocol.capturedRequests.map(\.method), ["POST"])
+            try expectEqual(OllamaURLProtocol.capturedRequests.map(\.path), ["/api/generate"])
+            let body = try jsonDictionary(OllamaURLProtocol.capturedRequests[0].body)
 
-            try expectEqual(bodies[0]["model"] as? String, "gemma4:latest")
-            try expectEqual(bodies[0]["prompt"] as? String, "")
-            try expectEqual(bodies[0]["stream"] as? Bool, false)
-            try expectEqual(bodies[0]["keep_alive"] as? String, "1h")
-            try expectEqual(bodies[1]["keep_alive"] as? String, "0")
+            try expectEqual(body["model"] as? String, "gemma4:latest")
+            try expectEqual(body["prompt"] as? String, "")
+            try expectEqual(body["stream"] as? Bool, false)
+            try expectEqual(body["keep_alive"] as? String, "0")
         }
 
         await suite.check("Ollama provider methods throw http status errors") {
@@ -558,18 +443,34 @@ struct ModelWidgetChecks {
         await petLayerChecks(&suite)
         await orbitChecks(&suite)
         await grokRosterChecks(&suite)
+        await grokUsageChecks(&suite)
         await reviewFixChecks(&suite)
         await orbitStateChecks(&suite)
+        await feedWorldChecks(&suite)
+        await feedServerChecks(&suite)
+        await feedFlagsChecks(&suite)
+        await feedEngineChecks(&suite)
         await providerLimitChecks(&suite)
         await petMotionChecks(&suite)
+        tokenMigrationChecks(&suite)
         suite.finish()
     }
 }
 
 struct CheckSuite {
     private(set) var failures = 0
+    private var ran = 0
+    /// `ModelWidgetChecks NAME` runs only the checks whose name contains NAME, ignoring case.
+    private let filter = CommandLine.arguments.dropFirst().first
+
+    private mutating func selects(_ name: String) -> Bool {
+        guard filter.map({ name.localizedCaseInsensitiveContains($0) }) ?? true else { return false }
+        ran += 1
+        return true
+    }
 
     mutating func check(_ name: String, _ body: () throws -> Void) {
+        guard selects(name) else { return }
         do {
             try body()
             print("PASS \(name)")
@@ -580,6 +481,7 @@ struct CheckSuite {
     }
 
     mutating func check(_ name: String, _ body: () async throws -> Void) async {
+        guard selects(name) else { return }
         do {
             try await body()
             print("PASS \(name)")
@@ -591,7 +493,7 @@ struct CheckSuite {
 
     func finish() -> Never {
         if failures == 0 {
-            print("All checks passed.")
+            print(filter.map { "All \(ran) checks matching \"\($0)\" passed." } ?? "All checks passed.")
             exit(0)
         } else {
             print("\(failures) check(s) failed.")
@@ -762,19 +664,15 @@ struct UnreachableModelProvider: ModelProvider {
 
     func installedModels() async throws -> [LocalModel] { throw URLError(.cannotConnectToHost) }
     func loadedModels() async throws -> [LoadedModel] { throw URLError(.cannotConnectToHost) }
-    func loadModel(named name: String) async throws { throw URLError(.cannotConnectToHost) }
     func unloadModel(named name: String) async throws { throw URLError(.cannotConnectToHost) }
 }
 
 final class MockModelProvider: ModelProvider {
     enum Event: Equatable, CustomStringConvertible {
-        case load(String)
         case unload(String)
 
         var description: String {
             switch self {
-            case let .load(name):
-                return "load(\(name))"
             case let .unload(name):
                 return "unload(\(name))"
             }
@@ -799,11 +697,6 @@ final class MockModelProvider: ModelProvider {
 
     func loadedModels() async throws -> [LoadedModel] {
         loaded
-    }
-
-    func loadModel(named name: String) async throws {
-        events.append(.load(name))
-        loaded = [LoadedModel(providerID: id, name: name, sizeBytes: 456)]
     }
 
     func unloadModel(named name: String) async throws {
@@ -836,14 +729,14 @@ final class MockProcessTerminator: ProcessTerminating {
     }
 }
 
-actor LoadGate {
-    private var loadAttempted = false
+actor UnloadGate {
+    private var unloadAttempted = false
     private var finishRequested = false
     private var waiters: [CheckedContinuation<Void, Never>] = []
     private var finishContinuation: CheckedContinuation<Void, Never>?
 
-    func markLoadAttempted() {
-        loadAttempted = true
+    func markUnloadAttempted() {
+        unloadAttempted = true
         let pending = waiters
         waiters = []
         for waiter in pending {
@@ -851,8 +744,8 @@ actor LoadGate {
         }
     }
 
-    func waitUntilLoadAttempted() async {
-        if loadAttempted { return }
+    func waitUntilUnloadAttempted() async {
+        if unloadAttempted { return }
         await withCheckedContinuation { continuation in
             waiters.append(continuation)
         }
@@ -875,7 +768,7 @@ actor LoadGate {
 final class BlockingMockModelProvider: ModelProvider {
     let id = "ollama"
     let displayName = "Ollama"
-    let gate = LoadGate()
+    let gate = UnloadGate()
     var installed: [LocalModel]
     var loaded: [LoadedModel]
     var events: [MockModelProvider.Event] = []
@@ -893,23 +786,18 @@ final class BlockingMockModelProvider: ModelProvider {
         loaded
     }
 
-    func loadModel(named name: String) async throws {
-        events.append(.load(name))
-        await gate.markLoadAttempted()
-        await gate.waitForFinish()
-        loaded = [LoadedModel(providerID: id, name: name, sizeBytes: 456)]
-    }
-
     func unloadModel(named name: String) async throws {
         events.append(.unload(name))
+        await gate.markUnloadAttempted()
+        await gate.waitForFinish()
         loaded.removeAll { $0.name == name }
     }
 
-    func waitUntilLoadAttempted() async {
-        await gate.waitUntilLoadAttempted()
+    func waitUntilUnloadAttempted() async {
+        await gate.waitUntilUnloadAttempted()
     }
 
-    func finishLoad() {
+    func finishUnload() {
         Task { await gate.finish() }
     }
 }

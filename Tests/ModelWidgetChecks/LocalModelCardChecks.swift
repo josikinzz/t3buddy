@@ -53,10 +53,7 @@ extension ModelWidgetChecks {
                 installed: [model("bonsai-8b", providerID: "bonsai")],
                 loaded: [loaded("bonsai-8b", providerID: "bonsai")]
             )
-            let viewModel = WidgetViewModel(
-                providers: [ollama, bonsai],
-                memorySampler: FixedMemorySampler(snapshot: .init(totalBytes: 100, usedBytes: 42))
-            )
+            let viewModel = WidgetViewModel(providers: [ollama, bonsai])
             await viewModel.refresh()
 
             let before = DesktopPanelPresentation.make(from: viewModel).card
@@ -74,10 +71,7 @@ extension ModelWidgetChecks {
 
         await suite.check("local model panel never shows memory byte text") { @MainActor in
             let provider = MockModelProvider(installed: [model("alpha")], loaded: [loaded("alpha")])
-            let viewModel = WidgetViewModel(
-                providers: [provider],
-                memorySampler: FixedMemorySampler(snapshot: .init(totalBytes: 1, usedBytes: 0))
-            )
+            let viewModel = WidgetViewModel(providers: [provider])
 
             let beforeRefresh = DesktopPanelPresentation.make(from: viewModel)
             await viewModel.refresh()

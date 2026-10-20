@@ -140,9 +140,17 @@ public struct T3Thread: Equatable, Sendable {
     public var creationSource: String?
     public var itemCount: Int?
     public var updatedAt: Date?
+    public var model: String?
+    /// The owner moved it out of their active list.
+    public var settled: Bool
+    /// Snoozed in T3 until then (`distantFuture` when snoozed with no end).
+    public var snoozedUntil: Date?
 
-    public init(threadId: String, title: String, status: T3ThreadStatus, providerInstanceId: String? = nil, parentThreadId: String? = nil, relationshipToParent: String? = nil, creationSource: String? = nil, itemCount: Int? = nil, updatedAt: Date? = nil) {
+    public init(threadId: String, title: String, status: T3ThreadStatus, providerInstanceId: String? = nil, parentThreadId: String? = nil, relationshipToParent: String? = nil, creationSource: String? = nil, itemCount: Int? = nil, updatedAt: Date? = nil, model: String? = nil, settled: Bool = false, snoozedUntil: Date? = nil) {
         self.threadId = threadId
+        self.model = model
+        self.settled = settled
+        self.snoozedUntil = snoozedUntil
         self.title = title
         self.status = status
         self.providerInstanceId = providerInstanceId
@@ -175,9 +183,12 @@ public struct T3TimelineItem: Equatable, Sendable {
     /// The first `maxCharsPerItem` characters of the item's text, as read.
     public var text: String?
     public var updatedAt: Date?
+    /// On a `user_message`: `user` for the thread's owner, `agent` for anything else that sent it.
+    public var createdBy: String?
 
-    public init(position: Int, itemId: String, subagentId: String? = nil, runId: String? = nil, type: String, status: String, title: String? = nil, text: String? = nil, updatedAt: Date? = nil) {
+    public init(position: Int, itemId: String, subagentId: String? = nil, runId: String? = nil, type: String, status: String, title: String? = nil, text: String? = nil, updatedAt: Date? = nil, createdBy: String? = nil) {
         self.position = position
+        self.createdBy = createdBy
         self.itemId = itemId
         self.subagentId = subagentId
         self.runId = runId
@@ -198,6 +209,10 @@ public struct T3TimelineItem: Equatable, Sendable {
     /// T3's own rule for work that is still going.
     public var isWorkActive: Bool { ["pending", "running", "waiting"].contains(status) }
     public var isFailed: Bool { status == "failed" }
+    /// The statuses that say a subagent ended (spec §2.5). `idle`, or a status newer than this
+    /// client, is not an ending: such a satellite fades rather than being swallowed.
+    public static let endedStatuses: Set<String> = ["completed", "interrupted", "cancelled", "rolled_back"]
+    public var hasEnded: Bool { Self.endedStatuses.contains(status) }
     /// The id the subagent's orb carries, stable while the item updates in place.
     public var orbKey: String { subagentId ?? itemId }
 }
@@ -269,7 +284,10 @@ public enum T3Payload {
                 relationshipToParent: item["relationshipToParent"] as? String,
                 creationSource: item["creationSource"] as? String,
                 itemCount: (item["itemCount"] as? NSNumber)?.intValue,
-                updatedAt: date(item["updatedAt"])
+                updatedAt: date(item["updatedAt"]),
+                model: item["model"] as? String,
+                settled: item["settled"] as? Bool ?? false,
+                snoozedUntil: item["snoozed"] as? Bool == true ? date(item["snoozedUntil"]) ?? .distantFuture : nil
             )
         }
         return T3Page(items: threads, nextCursor: cursor(object["nextCursor"]))
@@ -292,7 +310,8 @@ public enum T3Payload {
                 status: item["status"] as? String ?? "",
                 title: item["title"] as? String,
                 text: item["text"] as? String,
-                updatedAt: date(item["updatedAt"])
+                updatedAt: date(item["updatedAt"]),
+                createdBy: item["createdBy"] as? String
             )
         }
         return T3ThreadActivity(
@@ -334,6 +353,32 @@ public enum T3Payload {
     public static func pendingQuestionIds(_ data: Data) throws -> [String] {
         guard let ids = try jsonObject(data)["requestIds"] as? [String] else { throw MCPError.malformed("no requestIds") }
         return ids
+    }
+
+    /// `list_scheduled_tasks`: the enabled tasks as seeds, at most `limit`, soonest to run first.
+    /// `providers` maps a provider instance to its driver kind (as for threads).
+    public static func seeds(_ data: Data, providers: [String: String], limit: Int = 8) throws -> [FeedSeed] {
+        guard let tasks = try jsonObject(data)["tasks"] as? [[String: Any]] else { throw MCPError.malformed("no tasks") }
+        let seeds = tasks.compactMap { task -> FeedSeed? in
+            guard task["enabled"] as? Bool == true, let id = task["id"] as? String else { return nil }
+            let selection = task["modelSelection"] as? [String: Any]
+            let instance = selection?["instanceId"] as? String ?? selection?["provider"] as? String ?? ""
+            return FeedSeed(
+                id: id,
+                provider: providers[instance] ?? instance,
+                next: date(task["nextRunAt"])?.timeIntervalSince1970,
+                lastRun: date(task["lastRunAt"])?.timeIntervalSince1970,
+                failed: task["lastRunStatus"] as? String == "failed",
+                orbId: (task["threadId"] as? String).map(T3OrbMapper.orbId)
+            )
+        }
+        return Array(seeds.sorted { ($0.next ?? .infinity, $0.id) < ($1.next ?? .infinity, $1.id) }.prefix(limit))
+    }
+
+    /// `t3_queue_list`: how many messages wait for the thread's next turn (up to the page asked for).
+    public static func queuedCount(_ data: Data) throws -> Int {
+        guard let items = try jsonObject(data)["items"] as? [Any] else { throw MCPError.malformed("no items") }
+        return items.count
     }
 
     public static func environmentId(_ data: Data) throws -> String? {
@@ -396,7 +441,9 @@ public enum T3OrbMapper {
             label: thread.title.isEmpty ? project.title : "\(project.title) · \(thread.title)",
             link: threadURL(thread.threadId),
             activity: activity,
-            activeAt: thread.updatedAt.map { ($0.timeIntervalSince1970 * 1000).rounded() / 1000 }
+            activeAt: thread.updatedAt.map { ($0.timeIntervalSince1970 * 1000).rounded() / 1000 },
+            model: thread.model,
+            snoozedUntil: thread.snoozedUntil.map { min($0, Date(timeIntervalSince1970: 4_102_444_800)).timeIntervalSince1970.rounded() }
         )
     }
 
@@ -448,6 +495,11 @@ public enum T3OrbMapper {
                 activeAt: item.updatedAt.map { ($0.timeIntervalSince1970 * 1000).rounded() / 1000 }
             )
         }
+    }
+
+    /// The satellites among `items` that T3 says ended, by orb id, with the status it gave.
+    public static func endedSubagents(_ items: [T3TimelineItem]) -> [String: String] {
+        Dictionary(items.filter { $0.isSubagent && $0.hasEnded }.map { (orbId($0.orbKey), $0.status) }, uniquingKeysWith: { _, last in last })
     }
 
     /// The thread T3 keeps for a provider-native subagent item: it is listed `idle` whatever it

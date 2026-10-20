@@ -23,8 +23,7 @@ final class DesktopPanelRuntime: ObservableObject {
         refreshInterval: TimeInterval = DesktopPanelLayout.refreshInterval
     ) {
         let viewModel = viewModel ?? WidgetViewModel(
-            providers: [BonsaiClient(), MagnitudeClient(), OllamaClient()],
-            memorySampler: SystemMemorySampler()
+            providers: [BonsaiClient(), MagnitudeClient(), OllamaClient()]
         )
         self.viewModel = viewModel
         self.refreshInterval = refreshInterval

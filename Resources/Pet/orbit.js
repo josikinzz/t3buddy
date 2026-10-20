@@ -4,9 +4,9 @@
 // as little spheres. They ride near-circular rings hugging the outer edge of his ball body, so
 // every thread is in view at once. The rings lean back a little, as if seen from just below
 // their plane: the lower half of a lap is the near side, in the front layer over his legs; the
-// upper half is the far side, in the back layer under his canvas, just behind the top of his
-// head. Depth also shrinks and dims an orb a touch. Each ring carries a glowing energy line,
-// drawn in two halves on canvases in the same two layers. More orbs fill more, wider rings;
+// upper half is the far side, in the back layer under his canvas, where an orb passing over the
+// top of his head tucks a third of the way behind it. Depth also shrinks and dims an orb a touch.
+// Each ring carries a glowing energy line, drawn in two halves on canvases in the same two layers. More orbs fill more, wider rings;
 // nothing is hidden behind a count.
 //
 // A thread's orb wears its provider's logo small on its own surface, over the lower part of its
@@ -23,9 +23,9 @@
 //   active, no parent in orbit  -> a slot on his halo rings, its subagents circling it
 //   active, parent in orbit     -> a satellite circling its parent's orb (spawns from
 //                                  and is reabsorbed into the parent when it can be)
-//   waiting                     -> leaves orbit: the first is held out in his hands, pulsing
-//                                  amber with a "?" when it asks you a question (waitingFor
-//                                  "input"), a "!" otherwise; any others bob in a row in front of him
+//   waiting                     -> leaves orbit for the ask arc beside his head, outside his rings,
+//                                  and floats there as the dot of a lit 3D "?" when it asks you a
+//                                  question (waitingFor "input"), a "!" otherwise. He never holds it.
 //   failed                      -> cracks and turns red, and stays put just outside its ring
 //                                  until you look at it (hover a moment, or click); then it greys,
 //                                  sinks and fades. It stays even after the snapshot drops it,
@@ -47,13 +47,13 @@
 // amber, a failed one's red. Subagents trail theirs too, smaller and fainter; a parent's satellites
 // share one small ring, so they take turns, one tail at a time.
 
-import { tremble } from './motion.js';
+import { tremble, Phase, spring } from './motion.js';
 
 // Sizes follow his rendered body, so the orbit scales with the stage.
 const ORB_PER_HEIGHT = 0.14;     // face diameter as a share of his on-screen height
 const ORB_MIN = 34, ORB_MAX = 96;
-const SPAWN_S = 1.45;            // forehead to ring slot
-const MATERIALIZE_S = 0.28;      // ... of which the orb condenses in the forehead glow
+const SPAWN_S = 1.6;             // forehead to ring slot
+const MATERIALIZE_S = 0.3;       // ... of which the orb kindles in the forehead glow
 const SWALLOW_S = 1.3;           // ring slot to mouth
 const TUG_S = 0.3;               // ... of which the orb is tugged before it lets go
 const SWALLOW_STAGGER_S = 0.22;  // several orbs leaving at once queue for his mouth
@@ -64,10 +64,42 @@ const SAT_SCALE = 0.5;           // a satellite's size against its parent's
 const SAT_PERIOD = 6;            // seconds per lap on a parent's first satellite ring
 const BLEND_S = 0.9;             // glide between orbit, satellite, waiting and failed places
 const FADE_S = 0.6;              // reduced motion: fade in or out in place
-const WAIT_BOB_S = 1.8;          // seconds per bob of a waiting orb
-// A waiting orb's badge, by what it waits on (`waitingFor`): a question asks, anything else alerts.
-const WAIT_MARK = { input: '?', approval: '!' };
+// A thread waiting on its owner leaves its ring for the ask arc beside his head and shrinks into
+// the dot of a 3D question mark (effects.js grows the hook; "!" for an approval). Slots alternate
+// right and left from ASK_TOP_DEG above level, ASK_STEP_DEG lower each pair, oldest ask first,
+// each ASK_CLEAR orb sizes (more by ASK_LOW below level) outside the edge of an orb on the
+// outermost ring in use; past ASK_PER_ARC (half that when only one side has room) a further arc
+// ASK_OUTER_STEP out, with smaller dots. A mark stays at least ASK_MIN_S once formed.
+const ASK_CLEAR = 0.22, ASK_LOW = 0.5, ASK_OUTER_STEP = 0.95, ASK_PER_ARC = 6, ASK_TOP_DEG = 26, ASK_STEP_DEG = 24;
+const ASK_DOT = 0.62, ASK_OUTER = 0.8;   // the dot's size, and the outer arc's
+const ASK_MARK = { input: '?', approval: '!' };   // what a waiting thread wants -> its mark
+const ASK_HEADROOM = 2.7;                // dots of page kept clear above a dot, for its hook
+const ASK_BOB_S = 2.4, ASK_BOB = 0.06;   // a fixed bob, in orb sizes
+const ASK_FORM_S = 0.9, ASK_MIN_S = 1.2, ASK_RETRACT_S = 0.35;
 const FAIL_SINK = 0.09;          // a failed orb sinks this many orb sizes per second
+// The worry zone: failed orbs wait below and beside him, chipped, sputtering embers now and then.
+const WORRY_R = 1.25;                     // his radius out from his middle
+const WORRY_DEG = [30, 60], WORRY_PER_ROW = 4, WORRY_ROW = 0.9;   // below horizontal; a row further out is this many orbs
+const WORRY_SCALE = 0.85, WORRY_JOLT_S = 0.6;   // it jolts on its ring this long before it goes
+const SPUTTER_S = [1.6, 3.2], FLICKER_S = 0.12, FLICKER = 0.35, SHIVER = 0.015;
+// A message gulped: squash along the glint's way, overshoot, then a damped spring back; a flash.
+const GULP_SQUASH = [0.06, 0.9], GULP_STRETCH = [0.14, 1.08], GULP_W = 14, GULP_Z = 0.55, GULP_FLASH_S = 0.25;
+// Queued messages: up to three seeds circling the orb on its first moon ring, in the gaps between
+// any moons there, on a lap more open than theirs so they clear the orb (a question's dot keeps the
+// moons' flat lap, clear of its mark). Seed sizes are in orb sizes; more than three makes the last bigger.
+const SEEDS = 3, SEED = 0.26, SEED_BIG = 0.34, SEED_OPEN = 0.78, SEED_GROW_S = 0.3, SEED_EAT_S = 0.35, SEED_DROP_S = 0.4;
+const MEND_S = 1.5;
+// A thread moved to another provider: its badge flips over to the new one, and a rim of the new
+// provider's colour flashes round the orb. A new model alone only flashes, at half strength.
+const FLIP_IN_S = 0.18, FLIP_OUT_S = 0.24, FLIP_FLASH_S = 0.6, MODEL_FLASH_S = 0.4;
+export const PROVIDER_FLASH = { claudeAgent: '#d97757', codex: '#0a84ff', kimi: '#40c8e0', antigravity: '#ff6fb1', opencode: '#c9ced6', grok: '#f5f5f7', grokBot: '#f5f5f7' };
+// Snoozed: up to six orbs rest as frosted eggs in a row at his feet, soonest to wake in the middle.
+const EGG_MAX = 6, EGG_GAP = 0.95, EGG_ARC = 0.06, EGG_SCALE = 0.86;   // in orb sizes
+const SOLES_R = 1.62, EGG_BELOW = 0.12;     // his soles, and the eggs' middles, in ball radii below its centre
+const EGG_BREATH_S = 6, EGG_BREATH = 0.01;
+const EGG_ROCK_S = 60, EGG_ROCK_DEG = 6, EGG_HOP_S = 20, EGG_HOP_EVERY = 6, EGG_HOP = 0.06, EGG_HOP_LEN = 0.35;
+const HATCH_CRACK_S = 0.3, HATCH_SPLIT_S = 0.6, HATCH_POP_S = 0.35;
+const EGG_SLOTS = [0, 1, -1, 2, -2, 3];                       // a retried thread's orb seals in the worry zone this long, then flies home
 const GAZE_SPAWN_S = 1.8;        // how long his eyes follow a new orb
 const STIR_MS = 700;             // how long an orb already in orbit glows when its thread stirs again
 const TRAIL_CHARS = 44;          // longest a comet-trail line gets before it is cut with "…"
@@ -78,12 +110,25 @@ const BLUR_TAPS = [[-1.2, 0], [1.2, 0], [0, -1.2], [0, 1.2]];   // px offsets of
 // alternate rings a hair either way so stacked rings read as separate orbits.
 const RING_TILT = [0.94, 0.9, 0.93, 0.89];
 const RING_ROLL = [0.04, -0.05, 0.03, -0.04];
-const RING_DROP = 0;             // ring centre below the ball centre, in ball radii
+// The rings' centre sits RING_DROP orb sizes below his, and each ring is that much shorter, so
+// its near point stays over his legs while its far point comes down twice that: an orb passing
+// over the top tucks about a third of its height behind his head.
+const RING_DROP = 0.18;
 const DEPTH_SCALE = [0.86, 1.04]; // an orb's size at the far (top) and near (bottom) points of its ring
 const FAILED_KEEP_S = 600;       // an unseen failed orb outlives its snapshot this long at most
 const SEEN_HOVER_S = 0.6;        // hovering a failed orb this long counts as looking at it
 const ACKED_FADE_S = 20;         // a seen failed orb sinks and fades over this long
 const BUSY_S = 20, QUIET_S = 180, STALE_S = 600;   // a thread's last activity: busy, quiet, stale
+// How hard a thread is working (0 .. 1): the feed's `level` (its timeline's growth), at least
+// ACT_FLOOR for its pace. It quickens its ring (up to RING_RUSH, the mean over the ring), lets it
+// press ahead of its neighbours within its slot (SURGE, never past them), and quickens and deepens its breath.
+const ACT_FLOOR = { busy: 0.3, quiet: 0.05, stale: 0 };
+const RING_RUSH = 0.6, MOON_RUSH = 0.5;             // a ring at full activity laps 1.6x, satellites 1.5x
+const SURGE = 0.25;                                 // of a slot, at most
+const BREATH_S = [3.4, 0.95];                       // an orb's breath, idle to flat out; never quicker
+const BREATH_SCALE = [0.012, 0.05];                 // how much it swells at the top of a breath
+const CREST = 0.12;                                 // brighter at the crest of a breath, past ACT_CREST
+const ACT_CREST = 0.6;
 const MOTES = 22;                // drifting specks of light along each ring
 const DISSOLVE_S = 2.7;          // a limited orb darkens, shows its provider's logo and dissolves
 const DISSOLVE_STILL_S = 2.2;    // ... with reduced motion: fades only
@@ -101,6 +146,7 @@ const easeInOut = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) 
 /// Overshoots a little past 1 and settles: an arrival "pop".
 const easeOutBack = (t) => { const c = 1.6; return 1 + (c + 1) * Math.pow(t - 1, 3) + c * Math.pow(t - 1, 2); };
 const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a, b) => a + Math.random() * (b - a);
 const wrap = (a) => Math.atan2(Math.sin(a), Math.cos(a));
 /// Leaves d alone up to 3/4 of room, then eases it in so it never passes room.
 const softLimit = (d, room) => {
@@ -141,7 +187,7 @@ export function ringCounts(n, geo) {
 
 /// `ball()` is his ball body on the page this frame ({x, y, r}, following float, swell and drag);
 /// `foreheadAnchor()` and `mouthAnchor()` give page points; `events` hears spawns and swallows.
-export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAnchor = () => null, setHitRegions, post, events = {}, front, back }) {
+export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, setHitRegions, post, events = {}, front, back }) {
   const orbs = new Map();        // id -> orb record
   let order = [];                // ids in arrival order (slot order)
   let frameOrder = [];           // orbs, parents before their satellites
@@ -152,9 +198,11 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
   const ORB = geo.orb;
   front.style.setProperty('--orb', `${ORB}px`);
   back.style.setProperty('--orb', `${ORB}px`);
-  const lines = { front: makeCanvas(front), back: makeCanvas(back), dirty: { front: null, back: null } };
+  // `labels` sits over every orb and mark: an asking orb's words go there, so nothing hides them.
+  const lines = { front: makeCanvas(front), back: makeCanvas(back), labels: makeCanvas(front, 'orbit-labels'), dirty: { front: null, back: null } };
   const ringGlow = [];           // per ring, 0 .. 1: how lit its energy line is
   let ringsInUse = 0;
+  const askReach = { x: null, v: 0 };   // the outermost ring's offset the ask arc keeps clear of, eased as rings come and go
   let wind = 0;                  // 0 .. 1: how hard air rushes into his mouth
   const dead = new Set();        // ids dissolved for a limit, kept out while the snapshot still says limited
 
@@ -164,8 +212,12 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
   let hoverSince = 0;
   let lastHitReport = 0;
   let clock = 0;
-
-  // ------------------------------------------------------------- elements
+  // Each ring's and each parent's satellite ring's angle, advanced by dt at its own rate, so a rate
+  // that changes never sweeps the slots around (see Phase in motion.js).
+  const ringPhase = [];
+  const ringAct = [];             // each ring's mean activity, for its pace and its orbs' surge
+  const moonPhase = new Map();
+  let feedStale = false;
 
   function faceKey(icon) { return JSON.stringify([icon?.kind, icon?.src, icon?.text, icon?.color]); }
 
@@ -209,6 +261,9 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
         face.style.setProperty('--ring', icon.color);
       } else if (/^data:/.test(icon.src)) {
         face.classList.add('favicon');
+        img.addEventListener('load', () => {
+          if (img.parentNode === face && isOpaqueSquare(img)) face.classList.add('squircle');
+        }, { once: true });
       } else {                      // a bundled full-bleed icon (Grok Bot's own)
         face.classList.add('photo');
       }
@@ -224,6 +279,23 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     }
   }
 
+  function isOpaqueSquare(img) {
+    const w = img.naturalWidth, h = img.naturalHeight;
+    if (!w || !h || Math.abs(w / h - 1) > 0.02) return false;
+    const size = Math.min(w, 256);
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const g = canvas.getContext('2d');
+    g.drawImage(img, 0, 0, size, size);
+    try {
+      const px = g.getImageData(0, 0, size, size).data;
+      const last = size - 1;
+      return [[0, 0], [last, 0], [0, last], [last, last]].every(([x, y]) => px[(y * size + x) * 4 + 3] >= 250);
+    } catch {                       // WebKit may taint a canvas with an SVG; that icon keeps its shape
+      return false;
+    }
+  }
+
   function makeOrb(data) {
     const el = document.createElement('div');
     el.className = 'orb';
@@ -232,36 +304,79 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     badge.className = 'orb-badge';
     badge.alt = '';
     badge.draggable = false;
-    const alert = document.createElement('span');
-    alert.className = 'orb-alert';
     const crack = document.createElement('div');
     crack.className = 'orb-crack';
     crack.innerHTML = CRACK_SVG;
-    el.append(face, alert, crack);
+    el.append(face, crack);
+    // Where a failure chips it, the same for the orb's whole life.
+    const chip = (hashOf(data.id) % 360) * Math.PI / 180;
+    el.style.setProperty('--chip-x', `${50 + 54 * Math.cos(chip)}%`);
+    el.style.setProperty('--chip-y', `${50 + 54 * Math.sin(chip)}%`);
     const orb = {
-      id: data.id, el, face, badge, alert, data: null, faceKey: '', badgeKey: '', children: 0,
+      id: data.id, el, face, badge, data: null, faceKey: '', badgeKey: '', children: 0,
       seed: hashOf(data.id) % 6283 / 1000,
       phase: 'spawning', t0: null, from: null, leaveTo: 'mouth', delay: 0, announced: false,
       mode: null, blend: null, fadeIn: null, failAt: null, failFrom: null,
-      angle: null, ring: null, target: null, sat: null, satAngle: null, wait: null,
+      angle: null, ring: null, target: null, sat: null, satAngle: null, wait: null, swirl: null, psy: 1, haze: 0,
       layer: null, z: null, page: { x: 0, y: 0 }, scale: 0, opacity: 0, stretch: null, depth: 1, lit: -1,
-      seenAt: null, kept: false, pace: '', stale: 0, trail: [], trailFlip: false, trailText: '', trailGlow: 0, trailTurn: false,
+      seenAt: null, kept: false, gulp: null, queued: { seeds: [], gone: [], lap: new Phase(), eating: 0 }, eggRank: null, hatchAt: null, rotate: 0, flip: null, pace: '', stale: 0, act: { x: 0, v: 0 }, lead: { x: 0, v: 0 }, breath: new Phase(hashOf(data.id) % 7), breathDepth: { x: 0, v: 0 }, crest: { x: 1, v: 0 }, breathShown: 1, crestShown: 1, trail: [], trailFlip: false, trailText: '', trailGlow: 0, trailTurn: false,
     };
     applyData(orb, data);
     return orb;
   }
 
   function applyData(orb, data) {
+    const before = orb.data;
     orb.data = data;
     refreshFace(orb);
     const provider = BADGES[data.provider] ? data.provider : 'generic';
-    if (provider !== orb.badgeKey) {
-      orb.badgeKey = provider;
-      orb.badge.src = `./badges/${BADGES[provider] || 'generic.svg'}`;
-      orb.badge.classList.toggle('round', provider === 'grokBot');   // no transparency: cut to a circle
+    const color = PROVIDER_FLASH[data.provider] || '#8e8e93';
+    if (before && before.provider !== data.provider) {
+      orb.flip = { t0: clock, to: provider, color, strength: 1, flash: FLIP_FLASH_S, turn: !reduced };
+      if (orb.flip.turn) return finishData(orb, data);
+    } else if (before?.model && data.model && before.model !== data.model) {
+      orb.flip = { t0: clock, to: null, color, strength: 0.5, flash: MODEL_FLASH_S, turn: false };
     }
+    if (provider !== orb.badgeKey) setBadge(orb, provider);
+    finishData(orb, data);
+  }
+
+  function setBadge(orb, provider) {
+    orb.badgeKey = provider;
+    orb.badge.src = `./badges/${BADGES[provider] || 'generic.svg'}`;
+    orb.badge.classList.toggle('round', provider === 'grokBot');   // no transparency: cut to a circle
+  }
+
+  /// One frame of a provider flip: the badge turns edge-on (easeIn), swaps, and turns back
+  /// (easeOutBack), while a rim of the new provider's colour flashes round the orb from the swap.
+  function flipFrame(orb, t) {
+    const f = orb.flip, since = t - f.t0;
+    const flashFrom = f.turn ? FLIP_IN_S : 0;
+    const u = (since - flashFrom) / f.flash;
+    const flash = u >= 0 && u < 1 ? f.strength * (reduced ? 0.4 : 0.9) * Math.sin(Math.PI * (1 - Math.pow(1 - u, 3))) : 0;
+    orb.el.dataset.flip = '1';
+    orb.el.style.setProperty('--gulp-color', f.color);
+    orb.el.style.setProperty('--gulp', flash.toFixed(3));
+    if (f.turn) {
+      let deg = 0;
+      if (since < FLIP_IN_S) deg = 90 * easeIn(since / FLIP_IN_S);
+      else {
+        if (f.to && orb.badgeKey !== f.to) setBadge(orb, f.to);
+        deg = since < FLIP_IN_S + FLIP_OUT_S ? 90 * (1 - easeOutBack((since - FLIP_IN_S) / FLIP_OUT_S)) : 0;
+      }
+      orb.badge.style.transform = deg ? `translate(-50%, -50%) rotateY(${deg.toFixed(1)}deg)` : '';
+    } else if (f.to && orb.badgeKey !== f.to) {
+      setBadge(orb, f.to);
+    }
+    if (since > flashFrom + f.flash && (!f.turn || since > FLIP_IN_S + FLIP_OUT_S)) {
+      orb.flip = null; delete orb.el.dataset.flip; orb.el.style.removeProperty('--gulp'); orb.badge.style.transform = '';
+    }
+  }
+
+  function finishData(orb, data) {
+    if (data.state === 'waiting' && orb.el.dataset.state !== 'waiting') orb.waitSince = clock;
+    if (data.state !== 'waiting') orb.waitSince = null;
     orb.el.dataset.state = data.state || 'active';
-    orb.alert.textContent = WAIT_MARK[data.waitingFor] || WAIT_MARK.approval;
     orb.el.dataset.provider = data.provider || '';
   }
 
@@ -269,6 +384,13 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
 
   function update(snapshot) {
     const all = Array.isArray(snapshot?.orbs) ? snapshot.orbs.filter((o) => o && typeof o.id === 'string') : [];
+    // Orbs whose thread left without T3 saying it finished (feed.js): they fade, never swallowed.
+    const fade = new Set(Array.isArray(snapshot?.fade) ? snapshot.fade : []);
+    // Failures the owner has settled in T3 count as looked at.
+    for (const id of Array.isArray(snapshot?.seen) ? snapshot.seen : []) {
+      const orb = orbs.get(id);
+      if (orb?.mode === 'failed' && orb.seenAt === null) seen(orb, clock);
+    }
     // An orb its provider refused for a limit dies where it is, once; it stays out of the scene while
     // the snapshot still says limited. One that arrives already limited never shows.
     const reported = new Set(all.map((o) => o.id));
@@ -303,6 +425,11 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
         }
       }
     }
+    // A message taken off a queue keeps its seed until the glint bringing it lands (gulp).
+    for (const m of Array.isArray(snapshot?.messages) ? snapshot.messages : []) {
+      const orb = m?.fromQueue ? orbs.get(m.id) : null;
+      if (orb) orb.queued.eating += 1;
+    }
     // A parent stays while anything in the snapshot circles it, even when the snapshot drops it,
     // so its satellites never fall out onto the halo.
     const parents = new Set();
@@ -329,9 +456,11 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
         // A failed orb fades where it is; a satellite goes back into its parent if the parent stays;
         // everything else is swallowed, one after another.
         const parent = orb.data.parentId ? orbs.get(orb.data.parentId) : null;
-        orb.leaveTo = reduced || orb.mode === 'failed' ? 'fade'
+        orb.leaveTo = reduced || orb.mode === 'failed' || fade.has(id) ? 'fade'
           : orb.mode === 'sat' && parent && incoming.has(parent.id) ? 'parent' : 'mouth';
         orb.delay = orb.leaveTo === 'mouth' ? queued++ * SWALLOW_STAGGER_S : 0;
+        // An egg whose thread finished hatches before it is swallowed.
+        if (orb.mode === 'egg' && orb.leaveTo === 'mouth' && !reduced) { hatch(orb); orb.delay += HATCH_CRACK_S + HATCH_SPLIT_S + 1; }
         orb.phase = 'leaving'; orb.t0 = null; orb.announced = false;
         orb.from = { ...orb.page, scale: orb.scale, opacity: orb.opacity };
         removed.push(id);
@@ -357,7 +486,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     orb.phase = 'leaving'; orb.leaveTo = 'dissolve'; orb.t0 = null; orb.delay = 0; orb.announced = false; orb.blend = null;
     orb.from = { ...orb.page, scale: orb.scale || 1, opacity: orb.opacity || 1 };
     orb.el.dataset.dying = '1';
-    orb.el.classList.remove('psychic', 'hover', 'cracking');
+    orb.el.classList.remove('psychic', 'emerging', 'hover', 'cracking');
   }
 
   /// The orb's parent when it can orbit it: present, not leaving, and no loop in the chain.
@@ -371,7 +500,13 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
   }
 
   function modeOf(orb) {
+    if (orb.eggRank != null) return 'egg';
     if (orb.data.state === 'waiting') return 'waiting';
+    // Answered within moments of asking: the mark still shows long enough to read.
+    if (orb.mode === 'waiting' && orb.data.state !== 'failed' && clock - orb.askedAt < ASK_FORM_S + ASK_MIN_S) {
+      orb.askHeldUntil = orb.askedAt + ASK_FORM_S + ASK_MIN_S;
+      return 'waiting';
+    }
     if (orb.data.state === 'failed') return 'failed';
     return parentOf(orb) ? 'sat' : 'main';
   }
@@ -380,18 +515,30 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
   /// parent's small rings, waiting orbs a spot in front of him. A changed place starts a glide.
   function assignLayout() {
     const live = order.map((id) => orbs.get(id)).filter((o) => o && o.phase !== 'leaving');
+    // Snoozed threads rest as eggs, the six waking soonest; any more stay where they are.
+    const snoozed = live.filter((o) => o.data.snoozedUntil != null && !o.data.parentId).sort((a, b) => a.data.snoozedUntil - b.data.snoozedUntil);
+    for (const orb of live) orb.eggRank = null;
+    snoozed.slice(0, EGG_MAX).forEach((orb, rank) => { orb.eggRank = rank; });
     for (const orb of live) {
       const mode = modeOf(orb);
       if (mode !== orb.mode) {
         if (orb.mode !== null && orb.phase !== 'spawning') {
           if (reduced) orb.fadeIn = null; else orb.blend = { from: { ...orb.page, scale: orb.scale }, t0: null };
         }
-        if (mode === 'failed') { orb.failAt = null; orb.failFrom = null; orb.seenAt = null; crackOpen(orb); }
+        if (mode === 'failed') { orb.failAt = null; orb.failFrom = null; orb.seenAt = null; orb.failedAt = clock; crackOpen(orb); }
+        // A failed thread that runs again mends where it waited, then flies home (see goalOf).
+        if (orb.mode === 'failed' && mode !== 'failed' && orb.worrySpot && orb.seenAt === null) {
+          orb.mendAt = clock; orb.mendFrom = orb.worrySpot; orb.blend = null; orb.el.dataset.mending = '1';
+          events.mended?.(orb);
+        }
         const was = orb.mode;
         orb.mode = mode;
         refreshFace(orb);
         if (mode === 'failed' && was !== 'failed') events.failed?.(orb);
-        if (mode === 'waiting' && was !== 'waiting') events.waiting?.(orb);
+        if (mode === 'waiting' && was !== 'waiting') { orb.askedAt = clock; orb.answeredAt = null; events.waiting?.(orb); }
+        if (was === 'waiting' && mode !== 'waiting') orb.answeredAt = clock;
+        if (mode === 'egg') { orb.el.dataset.egg = '1'; orb.hatchAt = null; }
+        if (was === 'egg' && mode !== 'egg') hatch(orb);
       }
       orb.target = null; orb.sat = null; orb.wait = null;
     }
@@ -405,7 +552,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       for (let j = 0; j < count; j += 1, i += 1) {
         const orb = main[i];
         // Slot 0 starts at the top of the halo, above his head.
-        orb.target = { ring: k, spec, slot: -Math.PI / 2 + TAU * j / count + k * 0.5 };
+        orb.target = { ring: k, spec, slot: -Math.PI / 2 + TAU * j / count + k * 0.5, spacing: TAU / count };
         if (!orb.ring) orb.ring = { offset: spec.offset, tilt: spec.tilt, roll: spec.roll };
       }
     });
@@ -436,7 +583,10 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       }
     }
 
-    const waiting = live.filter((o) => o.mode === 'waiting');
+    const failed = live.filter((o) => o.mode === 'failed').sort((a, b) => a.failedAt - b.failedAt);
+    failed.forEach((orb, index) => { orb.worry = index; });
+
+    const waiting = live.filter((o) => o.mode === 'waiting').sort((a, b) => (a.waitSince ?? a.askedAt) - (b.waitSince ?? b.askedAt));
     waiting.forEach((orb, index) => { orb.wait = { index, count: waiting.length }; });
 
     // Parents first, so a satellite reads its parent's position from the same frame.
@@ -463,9 +613,10 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
   /// narrowed and opened up vertically, so no orb leaves the screen.
   function project(ring, angle) {
     const radius = hub.r + ring.offset;
-    const ex = Math.cos(angle) * radius, ey = Math.sin(angle) * radius * (ring.tilt ?? 1);
+    const drop = ring.tilt === undefined ? 0 : ORB * RING_DROP;
+    const ex = Math.cos(angle) * radius, ey = Math.sin(angle) * (radius * (ring.tilt ?? 1) - drop);
     const cr = Math.cos(ring.roll ?? 0), sr = Math.sin(ring.roll ?? 0);
-    let dx = ex * cr - ey * sr, dy = ex * sr + ey * cr + (ring.tilt === undefined ? 0 : hub.r * RING_DROP);
+    let dx = ex * cr - ey * sr, dy = ex * sr + ey * cr + drop;
     const fit = Math.min(1, hub.roomX / radius);
     if (fit < 1) { dx *= fit; dy *= 1 + (1 - fit) * 0.8; }
     dy = Math.sign(dy) * softLimit(Math.abs(dy), dy < 0 ? hub.roomUp : hub.roomDown);
@@ -474,57 +625,231 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
 
   const depthScale = (d) => lerp(DEPTH_SCALE[0], DEPTH_SCALE[1], (d + 1) / 2);
 
+  /// How far a parent of scale `ps` keeps its moons on satellite ring `ring`, centre to centre.
+  const moonRadius = (ps, ring) => ORB * ps * (0.5 + SAT_SCALE * (0.5 + 1.25 * ring)) + ORB * 0.1;
+
+  /// Which side of him a waiting orb's place is on: 1 right, -1 left. Questions alternate sides,
+  /// unless only one side has room for them (askRoom).
+  const askSide = (orb) => askRoom || (orb.wait.index % 2 ? -1 : 1);
+  let askRoom = 0;
+
+  /// A dot on the ask arc, before it is kept on the page: out along its bearing from where the
+  /// outermost ring crosses it, however that ring is squeezed to fit the screen.
+  function askPlace(side, angle, arc) {
+    const size = ORB * ASK_DOT * (arc ? ASK_OUTER : 1);
+    const edge = project({ ...ringSpec(Math.max(0, ringsInUse - 1), geo), offset: askReach.x ?? 0 }, Math.atan2(-Math.sin(angle), side * Math.cos(angle)));
+    const dx = edge.x - hub.x, dy = edge.y - hub.y, d = Math.hypot(dx, dy) || 1;
+    // Below level its hook rises back toward the ring, so it stands further out.
+    const out = ORB * depthScale(edge.depth) / 2 + ORB * (ASK_CLEAR + ASK_LOW * Math.max(0, -Math.sin(angle)) + arc * ASK_OUTER_STEP) + size / 2;
+    return { x: edge.x + dx / d * out, y: edge.y + dy / d * out, size };
+  }
+
+  /// When the screen's edge would pull the ask arc's widest dot on one side back over his rings,
+  /// the side that pulls it least takes every question; 0 while both sides have room.
+  function measureAskRoom() {
+    const short = (side) => { const p = askPlace(side, 0, 0); return Math.max(0, p.size * 0.7 - p.x, p.x + p.size * 0.7 - window.innerWidth); };
+    const right = short(1), left = short(-1);
+    askRoom = Math.max(right, left) <= ORB * 0.25 ? 0 : right <= left ? 1 : -1;
+  }
+
+  /// A waiting orb's place on the ask arc, as the dot of its question mark.
+  function askSlot(orb, t, motion) {
+    const perArc = askRoom ? ASK_PER_ARC / 2 : ASK_PER_ARC;
+    const arc = Math.floor(orb.wait.index / perArc), i = orb.wait.index % perArc;
+    // A further arc's slots fall between the nearer arc's, so their hooks miss its dots.
+    const angle = (ASK_TOP_DEG - ASK_STEP_DEG * ((askRoom ? i : Math.floor(i / 2)) + (arc % 2) / 2)) * Math.PI / 180;
+    const bob = motion * Math.sin(t * TAU / ASK_BOB_S + orb.seed) * ORB * ASK_BOB;
+    const scale = ASK_DOT * (arc ? ASK_OUTER : 1);
+    const p = askPlace(askSide(orb), angle, arc);
+    // Kept on the page with room above for its hook (effects.js draws it 2.1 dots tall, nearer the camera than the dot).
+    const x = Math.min(window.innerWidth - p.size * 0.7, Math.max(p.size * 0.7, p.x));
+    const y = Math.max(p.size * ASK_HEADROOM, p.y + bob);
+    return { x, y, scale, z: 1600 + orb.wait.index };
+  }
+
+  /// One frame of an orb gulping a message: it squashes along the glint's way, overshoots and
+  /// springs back, flashing the glint's colour. With reduced motion, a 3% pulse and the flash.
+  function gulpFrame(orb, t) {
+    const since = t - orb.gulp.t0;
+    const flash = since < GULP_FLASH_S ? 0.8 * Math.sin(Math.PI * since / GULP_FLASH_S) : 0;
+    orb.el.style.setProperty('--gulp', flash.toFixed(3));
+    if (reduced) {
+      if (since < 0.3) orb.scale *= 1 + 0.03 * Math.sin(Math.PI * since / 0.3);
+      else { orb.gulp = null; orb.el.style.removeProperty('--gulp'); }
+      return;
+    }
+    const [s1, a1] = GULP_SQUASH, [s2, a2] = GULP_STRETCH;
+    let amount;
+    if (since < s1) amount = 1 - (1 - a1) * easeOut(since / s1);
+    else if (since < s1 + s2) amount = a1 + (a2 - a1) * (since - s1) / s2;
+    else {
+      const after = since - s1 - s2;
+      amount = 1 + (a2 - 1) * Math.exp(-GULP_Z * GULP_W * after) * Math.cos(after * GULP_W * Math.sqrt(1 - GULP_Z * GULP_Z));
+      if (after > 0.8) { orb.gulp = null; orb.el.style.removeProperty('--gulp'); return; }
+    }
+    orb.stretch = { angle: orb.gulp.angle, amount };
+  }
+
+  /// The queue's seeds for one orb this frame: one per queued message, up to SEEDS, front first,
+  /// evenly round their own lap, or shared out between the gaps of its first moon ring and riding
+  /// that ring's phase. A message taken off the queue keeps its seed until the orb gulps it.
+  function stepSeeds(orb, dt) {
+    const q = orb.queued;
+    const want = orb.phase === 'live' && (orb.mode === 'main' || orb.mode === 'waiting') ? Math.min(SEEDS, (orb.data.queue || 0) + q.eating) : 0;
+    while (q.seeds.length > want) {
+      const s = q.seeds.pop();
+      q.gone.push({ x: s.x, y: s.y, size: s.size, turn: s.turn, t0: clock, eaten: false });
+    }
+    while (q.seeds.length < want) q.seeds.push({ angle: null, grown: 0, x: orb.page.x, y: orb.page.y, size: 0, turn: 0 });
+    q.gone = q.gone.filter((g) => clock - g.t0 < (g.eaten ? SEED_EAT_S : SEED_DROP_S));
+    const motion = reduced ? 0 : 1;
+    const speed = TAU / SAT_PERIOD;
+    q.lap.advance(dt, speed * motion);
+    if (!q.seeds.length) return;
+    let moons = 0;
+    for (const o of orbs.values()) if (o.mode === 'sat' && o.sat?.ring === 0 && o.phase !== 'leaving' && o.data.parentId === orb.id) moons += 1;
+    const lap = moons ? moonPhase.get(`${orb.id}|0`)?.value ?? 0 : q.lap.value;
+    const m = q.seeds.length;
+    const ps = Math.max(0.2, orb.scale);
+    const r = moonRadius(ps, 0), open = orb.mode === 'waiting' ? 0.38 : SEED_OPEN;
+    const k = 1 - Math.exp(-dt * EASE_RATE);
+    q.seeds.forEach((s, i) => {
+      const g = moons ? i % moons : 0;
+      const slot = moons ? TAU * (g + (Math.floor(i / moons) + 1) / (Math.floor((m - 1 - g) / moons) + 2)) / moons : TAU * i / m;
+      const goal = lap + slot;
+      if (s.angle === null) s.angle = goal;
+      s.angle += speed * dt * motion;
+      s.angle += wrap(goal - s.angle) * k;
+      s.grown = reduced ? 1 : Math.min(1, s.grown + dt / SEED_GROW_S);
+      const near = Math.sin(s.angle);
+      s.x = orb.page.x + Math.cos(s.angle) * r;
+      s.y = orb.page.y + near * r * open;
+      // Its point trails behind it along the lap.
+      s.turn = Math.atan2(-Math.cos(s.angle) * open, Math.sin(s.angle));
+      s.size = ORB * ps * (i === SEEDS - 1 && (orb.data.queue || 0) > SEEDS ? SEED_BIG : SEED) * easeOut(s.grown) * (0.86 + 0.14 * (near + 1) / 2);
+    });
+  }
+
+  /// An egg's place: a shallow arc at his feet, soonest to wake in the middle, then out to the
+  /// sides in turn.
+  function eggSlot(orb) {
+    const k = EGG_SLOTS[orb.eggRank];
+    return {
+      x: hub.x + k * ORB * EGG_GAP,
+      y: Math.min(window.innerHeight - ORB * 0.7, hub.y + hub.r * (SOLES_R + EGG_BELOW) - ORB * EGG_ARC * k * k),
+    };
+  }
+
+  /// Its thread woke: the egg cracks where it rests, then its shell splits away (pet.js drops two
+  /// 3D half-shells) and the orb pops out. With reduced motion it crossfades.
+  function hatch(orb) {
+    orb.hatchAt = clock;
+    orb.hatchFrom = { x: orb.page.x, y: orb.page.y };
+    orb.el.dataset.hatching = '1';
+    if (reduced) { delete orb.el.dataset.egg; delete orb.el.dataset.hatching; orb.hatchAt = null; orb.fadeIn = null; }
+  }
+
+  /// A hatching orb's scale and rock this frame, or null once it is out and free to fly.
+  function hatchPose(orb, t) {
+    const p = t - orb.hatchAt;
+    if (p >= HATCH_CRACK_S && orb.el.dataset.egg) {
+      delete orb.el.dataset.egg; delete orb.el.dataset.hatching;
+      events.hatch?.(orb);
+    }
+    if (p < HATCH_CRACK_S) return { scale: EGG_SCALE, rotate: 7 * tremble(t, 30, orb.seed) * (1 - p / HATCH_CRACK_S) };
+    if (p < HATCH_CRACK_S + HATCH_SPLIT_S) return { scale: lerp(0.8, 1, easeOutBack(clamp01((p - HATCH_CRACK_S) / HATCH_POP_S))), rotate: 0 };
+    return null;
+  }
+
+  /// A failed orb's place in the worry zone: alternating sides, 30 to 60 degrees below his middle,
+  /// four to a row, each further row a little lower and further out.
+  function worrySlot(orb) {
+    const row = Math.floor(orb.worry / WORRY_PER_ROW), i = orb.worry % WORRY_PER_ROW;
+    const side = i % 2 ? -1 : 1;
+    const angle = (WORRY_DEG[0] + (WORRY_DEG[1] - WORRY_DEG[0]) * Math.floor(i / 2) + 15 * row) * Math.PI / 180;
+    const r = hub.r * WORRY_R + row * ORB * WORRY_ROW, size = ORB * WORRY_SCALE;
+    return {
+      x: Math.min(window.innerWidth - size * 0.6, Math.max(size * 0.6, hub.x + side * Math.cos(angle) * r)),
+      y: Math.min(window.innerHeight - size * 0.6, hub.y + Math.sin(angle) * r),
+    };
+  }
+
   /// Where an orb belongs this frame, by its place.
   function goalOf(orb, t, dt, k) {
     const motion = reduced ? 0 : 1;
-    if (orb.mode === 'waiting' && orb.wait) {
-      // The first is held out in his hands, a little bigger, bobbing with his hop.
-      const held = orb.wait.index === 0 ? holdAnchor() : null;
-      if (held && held.amount > 0.05) return { x: held.x, y: held.y, scale: 1 + 0.55 * held.amount, z: 1700 };
-      // The rest wait in front of his belly, in staggered rows; as many rows as it takes.
-      const step = ORB * 1.25;
-      const perRow = Math.max(2, Math.floor(hub.r * 1.5 / step));
-      const row = Math.floor(orb.wait.index / perRow);
-      const inRow = Math.min(perRow, orb.wait.count - row * perRow);
-      const col = orb.wait.index - row * perRow;
-      const x = hub.x + (col - (inRow - 1) / 2) * step + (row % 2 ? step / 2 : 0);
-      let y = hub.y + hub.r * 0.74 + row * ORB * 1.1 + (col % 2 ? ORB * 0.2 : 0) + (holdAnchor() ? ORB * 0.75 : 0);
-      y += motion * Math.sin(t * TAU / WAIT_BOB_S + orb.wait.index * 0.9) * ORB * 0.1;
-      return { x, y, scale: 1.06, z: 1600 + orb.wait.index };
+    if (orb.hatchAt != null && orb.phase !== 'leaving') {
+      const pose = hatchPose(orb, t);
+      if (pose) return { ...orb.hatchFrom, ...pose, z: 900 };
+      orb.hatchAt = null;
+      orb.blend = { from: { ...orb.page, scale: orb.scale }, t0: null };
     }
+    if (orb.mode === 'egg') {
+      // Resting: a very slow breath. Its last minute it rocks, more and more; its last twenty
+      // seconds it hops every six. With reduced motion it only glows amber at its rim.
+      const spot = eggSlot(orb);
+      const left = orb.data.snoozedUntil - Date.now() / 1000;
+      const near = clamp01(1 - left / EGG_ROCK_S);
+      if (reduced) {
+        orb.el.style.setProperty('--wake', near.toFixed(3));
+        return { ...spot, scale: EGG_SCALE, z: 850 };
+      }
+      const since = EGG_HOP_S - left, hop = since > 0 ? since % EGG_HOP_EVERY : -1;
+      const lift = hop >= 0 && hop < EGG_HOP_LEN ? ORB * EGG_HOP * Math.sin(Math.PI * hop / EGG_HOP_LEN) : 0;
+      return {
+        x: spot.x, y: spot.y - lift,
+        scale: EGG_SCALE * (1 + EGG_BREATH * Math.sin(t * TAU / EGG_BREATH_S + orb.seed)),
+        rotate: EGG_ROCK_DEG * near * tremble(t, 5, orb.seed),
+        z: 850,
+      };
+    }
+    if (orb.mendAt != null) {
+      // Mending: sealed where it waited, the red draining out; then it glides home.
+      const p = (t - orb.mendAt) / MEND_S;
+      if (p < 1) return { ...orb.mendFrom, scale: lerp(WORRY_SCALE, 1, smoothstep(0.7, 1, p)), z: 900 };
+      orb.mendAt = null; delete orb.el.dataset.mending;
+      if (!reduced) orb.blend = { from: { ...orb.page, scale: orb.scale }, t0: null };
+    }
+    if (orb.mode === 'waiting' && orb.wait) return askSlot(orb, t, motion);
     if (orb.mode === 'failed') {
-      // A failed orb steps out from where it was on his halo and stays there, trembling now and
-      // then, until you look at it; then it sinks and fades. It never crosses his face.
+      // A failed orb jolts on its ring, then goes down to the worry zone beside him and waits there,
+      // shivering, sputtering embers now and then, until you look at it; then it sinks and fades.
       if (orb.failAt === null) {
         orb.failAt = t;
-        let angle;
-        if (orb.phase === 'spawning' && !orb.from) {
-          // Arrived already failed: it starts from a spot on his first ring.
-          angle = (hashOf(orb.id) % 360) * Math.PI / 180;
-        } else {
-          angle = Math.atan2(orb.page.y - hub.y, orb.page.x - hub.x);
-        }
-        orb.failFrom = { angle, scale: orb.phase === 'spawning' ? 1 : orb.scale || 1 };
+        orb.failFrom = { ...orb.page, scale: orb.phase === 'spawning' ? WORRY_SCALE : orb.scale || 1 };
+        orb.sputterAt = t + WORRY_JOLT_S + rand(...SPUTTER_S) * 0.5;
       }
-      const from = orb.failFrom;
-      const spot = project({ offset: geo.gap0 + ORB * 0.4 }, from.angle);
+      const jolting = !reduced && orb.phase !== 'spawning' && t - orb.failAt < WORRY_JOLT_S;
+      if (jolting) return { x: orb.failFrom.x, y: orb.failFrom.y, scale: orb.failFrom.scale, z: 900 };
+      if (orb.joltDone !== orb.failAt) {
+        orb.joltDone = orb.failAt;
+        if (!reduced && orb.phase !== 'spawning') orb.blend = { from: { ...orb.page, scale: orb.scale }, t0: null };
+      }
+      const spot = worrySlot(orb);
+      orb.worrySpot = spot;
       if (orb.seenAt === null) {
-        const shiver = motion * Math.max(0, Math.sin(t * 0.55 + orb.seed)) ** 18 * tremble(t, 34) * ORB * 0.02;
-        return { x: spot.x + shiver, y: spot.y, scale: Math.max(1, from.scale) * 1.04, z: 900 };
+        if (t >= orb.sputterAt) {
+          orb.sputterAt = t + rand(...SPUTTER_S);
+          orb.flickerAt = t;
+          if (!reduced && orb.phase === 'live' && !orb.blend) events.sputter?.(orb);
+        }
+        const f = (t - (orb.flickerAt ?? -1)) / FLICKER_S;
+        const opacity = reduced
+          ? 0.8 + 0.2 * Math.sin(t * TAU / 3 + orb.seed)
+          : f >= 0 && f < 1 ? 1 - FLICKER * Math.sin(Math.PI * f) : 1;
+        return { x: spot.x + motion * tremble(t, 34, orb.seed) * ORB * SHIVER, y: spot.y, scale: WORRY_SCALE, z: 900, opacity };
       }
       const age = Math.min(t - orb.seenAt, ACKED_FADE_S);
       const y = Math.min(spot.y + motion * age * FAIL_SINK * ORB * 2, window.innerHeight - ORB * 0.6);
       const x = spot.x + motion * Math.sin(age * 0.8) * ORB * 0.12;
-      return { x, y, scale: from.scale * (1 - 0.18 * clamp01(age / ACKED_FADE_S)), z: 300, opacity: 1 - 0.7 * clamp01(age / ACKED_FADE_S) };
+      return { x, y, scale: WORRY_SCALE * (1 - 0.18 * clamp01(age / ACKED_FADE_S)), z: 300, opacity: 1 - 0.7 * clamp01(age / ACKED_FADE_S) };
     }
     if (orb.mode === 'sat' && orb.sat) {
       const parent = parentOf(orb);
       if (parent) {
         const ps = Math.max(0.2, parent.scale);
-        const satSize = ORB * ps * SAT_SCALE;
-        const r = ORB * ps * 0.5 + satSize * 0.5 + ORB * 0.1 + orb.sat.ring * satSize * 1.25;
+        const r = moonRadius(ps, orb.sat.ring);
         const speed = TAU / (SAT_PERIOD * Math.sqrt(1 + orb.sat.ring)) * (orb.sat.ring % 2 ? -1 : 1);
-        const goal = speed * t * motion + orb.sat.slot;
+        const goal = moonPhaseOf(orb.data.parentId, orb.sat.ring).value + orb.sat.slot;
         if (orb.satAngle === null) orb.satAngle = goal;
         orb.satAngle += speed * dt * motion;
         orb.satAngle += wrap(goal - orb.satAngle) * k;
@@ -542,7 +867,9 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     // A halo slot. Orbit motion runs for every orb that has one, so a spawning orb aims at a moving target.
     if (orb.target) {
       const spec = orb.target.spec;
-      const goal = spec.speed * t * motion + orb.target.slot;
+      const ahead = reduced ? 0 : Math.max(-SURGE, Math.min(SURGE, SURGE * (orb.act.x - (ringAct[orb.target.ring] ?? 0))));
+      spring(orb.lead, ahead * orb.target.spacing * Math.sign(spec.speed || 1), 0.8, dt);
+      const goal = (ringPhase[orb.target.ring]?.value ?? 0) + orb.target.slot + orb.lead.x;
       if (orb.angle === null) orb.angle = goal;
       orb.angle += spec.speed * dt * motion;
       orb.angle += wrap(goal - orb.angle) * k;
@@ -560,11 +887,19 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
 
   function frame(t, dt) {
     clock = t;
+    const reach = ringSpec(Math.max(0, ringsInUse - 1), geo).offset;
+    if (askReach.x === null || reduced) askReach.x = reach; else spring(askReach, reach, 3, dt);
+    // A question answered too quickly to read is let go on the pet's own clock.
+    let released = false;
+    for (const orb of orbs.values()) if (orb.askHeldUntil != null && t >= orb.askHeldUntil) { orb.askHeldUntil = null; released = true; }
+    if (released) assignLayout();
     const anchor = foreheadAnchor();
     const home = anchor ? anchor.page : { x: hub?.x ?? 0, y: (hub?.y ?? 0) - (hub?.r ?? 0) * 0.5 };
     const k = 1 - Math.exp(-dt * EASE_RATE);
     measureHub();
+    measureAskRoom();
     let mouth = null;
+    advancePhases(dt);
 
     for (const orb of frameOrder) {
       if (!orbs.has(orb.id)) continue;
@@ -582,6 +917,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
         order = order.filter((id) => id !== orb.id);
       }
       paceOf(orb);
+      breathe(orb, dt);
       const goal = goalOf(orb, t, dt, k);
       orb.z = goal.z ?? null;
       orb.stretch = null;
@@ -606,36 +942,47 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
           orb.scale = start.scale + (goal.scale - start.scale) * e;
           orb.opacity = clamp01(p * 4) * (goal.opacity ?? 1);
         } else {
-          // Psychic: it condenses inside the glowing T3, then floats out on a wavering path and pops into place.
+          // Psychic: it kindles in the glowing T3 as a ball of light, condenses into itself as it
+          // lifts out of his head, then spirals out round him into its slot, the way the orbit
+          // flows when the slot is across from the T3, swinging wide enough to clear him.
+          const a0 = Math.atan2(home.y - hub.y, home.x - hub.x), r0 = Math.hypot(home.x - hub.x, home.y - hub.y);
+          const a1 = Math.atan2(goal.y - hub.y, goal.x - hub.x), r1 = Math.hypot(goal.x - hub.x, goal.y - hub.y);
+          let turn = wrap(a1 - a0);
+          if (orb.swirl === null) orb.swirl = Math.abs(turn) > Math.PI * 0.8 ? Math.sign(orb.target?.spec.speed || 1) : Math.sign(turn) || 1;
+          // Keeps the way round it chose, however its slot moves meanwhile.
+          if (Math.sign(turn) !== orb.swirl && Math.abs(turn) > 0.3) turn += orb.swirl * TAU;
+          const swing = ORB * (0.35 + 0.55 * Math.abs(turn) / Math.PI) * Math.sin(Math.PI * smoothstep(0.12, 1, p));
+          const a = a0 + turn * smoothstep(0.2, 0.96, p), r = lerp(r0, r1, smoothstep(0.06, 0.6, p)) + swing;
+          // Near an edge of the screen the swing bends along it, as the rings do (see project); what
+          // that moves the T3 and the slot themselves is taken back, so it leaves one and lands on the other.
+          const fit = (x, y) => ({
+            x: hub.x + Math.sign(x - hub.x) * softLimit(Math.abs(x - hub.x), hub.roomX),
+            y: hub.y + Math.sign(y - hub.y) * softLimit(Math.abs(y - hub.y), y < hub.y ? hub.roomUp : hub.roomDown),
+          });
+          const at = fit(hub.x + Math.cos(a) * r, hub.y + Math.sin(a) * r), from = fit(home.x, home.y), to = fit(goal.x, goal.y);
+          const w = smoothstep(0, 1, p);
+          orb.page = { x: at.x + (1 - w) * (home.x - from.x) + w * (goal.x - to.x), y: at.y + (1 - w) * (home.y - from.y) + w * (goal.y - to.y) };
           const m = MATERIALIZE_S / SPAWN_S;
-          if (p < m) {
-            const c = easeOut(p / m);
-            orb.page = { x: home.x, y: home.y - c * ORB * 0.15 };
-            orb.scale = 0.08 + 0.3 * c;
-            orb.opacity = c;
-          } else {
-            const u = (p - m) / (1 - m);
-            const e = easeInOut(u);
-            const start = { x: home.x, y: home.y - ORB * 0.15 };
-            const lift = { x: lerp(start.x, goal.x, 0.35), y: Math.min(start.y, goal.y) - ORB * 2.2 };
-            const pos = bezier(start, lift, goal, e);
-            // A sideways waver that dies out as it arrives.
-            const dx = goal.x - start.x, dy = goal.y - start.y, len = Math.hypot(dx, dy) || 1;
-            const wave = Math.sin(u * Math.PI * 3) * Math.sin(u * Math.PI) * ORB * 0.28;
-            orb.page = { x: pos.x - dy / len * wave, y: pos.y + dx / len * wave };
-            orb.scale = lerp(0.38, goal.scale, easeOutBack(u));
-            orb.opacity = goal.opacity ?? 1;
-          }
+          const c = easeOut(clamp01(p / m));
+          orb.scale = p < m ? 0.08 + 0.3 * c : lerp(0.38, goal.scale, easeOutBack((p - m) / (1 - m)));
+          orb.opacity = c * (goal.opacity ?? 1);
         }
         if (p < 0.85) { layer = front; depth = lerp(1, depth, clamp01(p / 0.85)); }
-        orb.el.classList.toggle('psychic', !reduced && !parent && !orb.from && p < 0.92);
-        if (p >= 1) { orb.phase = 'live'; orb.from = null; orb.blend = null; orb.el.classList.remove('psychic'); }
+        // Light at first, it solidifies by the time it is clear of his head; its aura fades as it settles.
+        const psychic = !reduced && !parent && !orb.from && p < 1;
+        orb.el.classList.toggle('psychic', psychic);
+        orb.el.classList.toggle('emerging', psychic);
+        if (psychic) setGlow(orb, 1 - smoothstep(0.45, 1, p), 1 - smoothstep(0.08, 0.42, p));
+        if (p >= 1) { orb.phase = 'live'; orb.from = null; orb.blend = null; orb.el.classList.remove('psychic', 'emerging'); setGlow(orb, 1, 0); }
       } else if (orb.phase === 'leaving') {
         const start = orb.from;
         layer = orb.layer || front; depth = orb.depth;
         if (t < orb.t0) {
-          // Queued for his mouth: it keeps its place until its turn.
-          orb.page = { x: start.x, y: start.y }; orb.scale = start.scale; orb.opacity = start.opacity ?? 1;
+          // Queued for his mouth: it keeps its place until its turn (an egg hatches meanwhile).
+          const pose = orb.hatchAt != null ? hatchPose(orb, t) : null;
+          if (orb.hatchAt != null && !pose) start.scale = 1;
+          orb.page = { x: start.x, y: start.y }; orb.scale = pose?.scale ?? start.scale; orb.opacity = start.opacity ?? 1;
+          orb.rotate = pose?.rotate ?? 0;
         } else if (orb.leaveTo === 'dissolve') {
           if (dissolveFrame(orb, t)) { remove(orb); continue; }
         } else if (orb.leaveTo === 'fade') {
@@ -695,6 +1042,9 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
         orb.page = page;
         orb.scale = scale;
         orb.opacity = (goal.opacity ?? 1) * fadeIn;
+        orb.rotate = goal.rotate ?? 0;
+        if (orb.flip) flipFrame(orb, t);
+        if (orb.gulp) gulpFrame(orb, t);
       }
       orb.depth = depth;
       place(orb, layer, t);
@@ -712,7 +1062,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
   /// dimmer and finer. (The wind he sucks orbs in on is 3D, in his scene: see effects.js.)
   function drawLines(t, dt) {
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    for (const c of [lines.front, lines.back]) {
+    for (const c of [lines.front, lines.back, lines.labels]) {
       const w = Math.round(window.innerWidth * dpr), h = Math.round(window.innerHeight * dpr);
       if (c.width !== w || c.height !== h) { c.width = w; c.height = h; c.box = null; }
       const ctx = c.getContext('2d');
@@ -775,7 +1125,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       // Motes: specks of light drifting along the ring, twinkling, larger on the near side.
       for (let n = 0; n < MOTES; n += 1) {
         const seed = (n * 0.618 + k * 0.31) % 1;
-        const a = TAU * n / MOTES + seed * 0.8 + spec.speed * t * 0.7 * motion + Math.sin(t * 0.5 + n) * 0.05 * motion;
+        const a = TAU * n / MOTES + seed * 0.8 + (ringPhase[k]?.value ?? 0) * 0.7 + Math.sin(t * 0.5 + n) * 0.05 * motion;
         const at = project({ ...spec, offset: spec.offset + (seed - 0.5) * ORB * 0.22 }, a);
         const lit = (at.depth + 1) / 2;
         const twinkle = 0.5 + 0.5 * Math.sin(t * (1.5 + seed * 2) * motion + n * 2.1);
@@ -784,7 +1134,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       // Sparks: soft points of light with a fading tail, running round ahead of the orbs.
       const comets = reduced ? 0 : 3;
       for (let n = 0; n < comets; n += 1) {
-        const head = spec.speed * t * 2.2 + TAU * n / comets + k;
+        const head = (ringPhase[k]?.value ?? 0) * 2.2 + TAU * n / comets + k;
         const dir = Math.sign(spec.speed) || 1;
         for (let s = 0; s <= 10; s += 1) {
           const at = project(spec, head - dir * s * 0.04);
@@ -806,7 +1156,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       const lit = group[Math.floor(t / SAT_TURN_S) % group.length];
       for (const orb of group) orb.trailTurn = orb === lit;
     }
-    for (const orb of orbs.values()) drawTrail(orb, dt, grow);
+    for (const orb of orbs.values()) { drawTrail(orb, dt, grow); stepSeeds(orb, dt); }
 
     // How hard air rushes into his mouth: pet.js draws it as 3D wind.
     let sucking = false;
@@ -853,13 +1203,23 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     const chars = [...orb.trailText];
     const widths = chars.map((c) => measure.measureText(c).width);
     const total = widths.reduce((a, b) => a + b, 0);
-    const gap = ORB * orb.scale / 2 + 5;
+    // An asking orb's words stand level beside its mark, clear of its "?" (0.6 of a dot to either
+    // side) and of any moons or seeds round its dot, not along the way it flew in, which runs up
+    // under its hook: on the side away from him, or toward him when the screen's edge leaves no room.
+    const asking = orb.mode === 'waiting' && orb.wait;
+    const gap = !asking ? ORB * orb.scale / 2 + 5 : (orb.children || orb.queued.seeds.length ? moonRadius(orb.scale, 0) + ORB * orb.scale * SAT_SCALE / 2 : ORB * orb.scale * 0.6) + 6;
     const need = gap + total + 4;
 
     // The path as arc-length samples from the orb backward, extended straight if it runs short.
-    const path = [head];
+    const path = [asking ? { ...head, depth: 1 } : head];
     let length = 0;
-    for (let i = 1; i < orb.trail.length && length < need; i += 1) {
+    if (asking) {
+      const out = askSide(orb);
+      const side = (out > 0 ? head.x + need <= window.innerWidth - 4 : head.x - need >= 4) ? out : -out;
+      path.push({ x: head.x + side * need, y: head.y, depth: 1 });
+      length = need;
+    }
+    for (let i = 1; !asking && i < orb.trail.length && length < need; i += 1) {
       const a = path[path.length - 1], b = orb.trail[i];
       length += Math.hypot(b.x - a.x, b.y - a.y);
       path.push(b);
@@ -902,7 +1262,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       const lit = (p.depth + 1) / 2;
       const alpha = orb.trailGlow * fade * orb.opacity * (0.55 + 0.45 * lit);
       if (alpha < 0.01 || chars[k] === ' ') continue;
-      const c = p.depth < 0 ? lines.back : lines.front;
+      const c = asking ? lines.labels : p.depth < 0 ? lines.back : lines.front;
       const ctx = c.getContext('2d');
       ctx.save();
       ctx.translate(p.x, p.y);
@@ -936,6 +1296,71 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     if (pace !== orb.pace) { orb.pace = pace; orb.el.dataset.pace = pace; }
     const stale = orb.mode === 'main' ? clamp01((age - QUIET_S) / (STALE_S - QUIET_S)) : 0;
     if (Math.abs(stale - orb.stale) > 0.02) { orb.stale = stale; orb.el.style.setProperty('--stale', stale.toFixed(2)); }
+  }
+
+  /// Moves every ring's angle on by this frame's dt, and every satellite ring's, each quicker the
+  /// harder its orbs are working (the mean, so the orbs on a ring keep their order).
+  function advancePhases(dt) {
+    const motion = reduced ? 0 : 1;
+    const rings = Math.max(ringsInUse, ringPhase.length);
+    const sums = new Map();
+    for (const orb of orbs.values()) {
+      const key = orb.mode === 'sat' && orb.sat ? `${orb.data.parentId}|${orb.sat.ring}` : orb.mode === 'main' && orb.target && orb.phase === 'live' ? orb.target.ring : null;
+      if (key === null) continue;
+      const sum = sums.get(key) ?? [0, 0];
+      sums.set(key, [sum[0] + orb.act.x, sum[1] + 1]);
+    }
+    const mean = (key) => { const sum = sums.get(key); return sum ? sum[0] / sum[1] : 0; };
+    for (let ring = 0; ring < rings; ring += 1) {
+      ringPhase[ring] ??= new Phase();
+      ringAct[ring] = mean(ring);
+      ringPhase[ring].advance(dt, ringSpec(ring, geo).speed * Math.min(1 + RING_RUSH, 1 + RING_RUSH * ringAct[ring]) * motion);
+    }
+    for (const key of sums.keys()) {
+      if (typeof key !== 'string') continue;
+      const ring = Number(key.slice(key.lastIndexOf('|') + 1));
+      const parentId = key.slice(0, key.lastIndexOf('|'));
+      moonPhaseOf(parentId, ring).advance(dt, TAU / (SAT_PERIOD * Math.sqrt(1 + ring)) * (ring % 2 ? -1 : 1) * Math.min(1 + MOON_RUSH, 1 + MOON_RUSH * mean(key)) * motion);
+    }
+    for (const key of moonPhase.keys()) if (!sums.has(key)) moonPhase.delete(key);
+  }
+
+  function moonPhaseOf(parentId, ring) {
+    const key = `${parentId}|${ring}`;
+    if (!moonPhase.has(key)) moonPhase.set(key, new Phase());
+    return moonPhase.get(key);
+  }
+
+  /// An orb's breath (`--pulse`, its face's scale, and `--crest`, its brightness): quicker and
+  /// deeper the harder its thread works, still once stale or while the feed cannot see T3. Activity
+  /// eases in over a few seconds, so a burst quickens the breath it is in rather than snapping.
+  /// With Reduce Motion it does not swell: it steps brighter with activity instead.
+  function breathe(orb, dt) {
+    const level = typeof orb.data.level === 'number' ? orb.data.level : 0;
+    const breathing = orb.pace in ACT_FLOOR && orb.pace !== 'stale' && !feedStale;
+    spring(orb.act, breathing ? Math.max(level, ACT_FLOOR[orb.pace]) : 0, 1.2, dt);
+    const a = clamp01(orb.act.x);
+    spring(orb.breathDepth, breathing && !reduced ? lerp(BREATH_SCALE[0], BREATH_SCALE[1], a) : 0, 1.5, dt);
+    orb.breath.advance(dt, TAU / lerp(BREATH_S[0], BREATH_S[1], a));
+    const swell = 0.5 - 0.5 * Math.cos(orb.breath.value);
+    const scale = 1 + clamp01(orb.breathDepth.x / BREATH_SCALE[1]) * BREATH_SCALE[1] * swell;
+    if (Math.abs(scale - orb.breathShown) >= 0.002) { orb.breathShown = scale; orb.face.style.setProperty('--pulse', scale.toFixed(4)); }
+    const lit = reduced ? (breathing ? [1, 1 + CREST / 2, 1 + CREST][Math.min(2, Math.floor(a * 3))] : 1)
+      : 1 + CREST * smoothstep(ACT_CREST, 1, a) * swell;
+    spring(orb.crest, lit, reduced ? 4 : 20, dt);
+    const crest = Math.round(orb.crest.x * 200) / 200;
+    if (crest !== orb.crestShown) {
+      orb.crestShown = crest;
+      if (crest > 1.001) { orb.el.dataset.crest = ''; orb.face.style.setProperty('--crest', crest.toFixed(3)); } else delete orb.el.dataset.crest;
+    }
+  }
+
+  /// How strong an orb's psychic aura is (`--psy`, 0 .. 1) and how much of it is still unformed light
+  /// (`--haze`, 0 .. 1), written only when they change.
+  function setGlow(orb, psy, haze) {
+    psy = Math.round(psy * 50) / 50; haze = Math.round(haze * 50) / 50;
+    if (psy !== orb.psy) { orb.psy = psy; orb.el.style.setProperty('--psy', String(psy)); }
+    if (haze !== orb.haze) { orb.haze = haze; orb.el.style.setProperty('--haze', String(haze)); }
   }
 
   /// A brief glow, the one he gives an orb coming out of his forehead, on an orb already in orbit.
@@ -1014,6 +1439,8 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       // Stretched along the pull: rotate into the pull, scale, rotate back.
       const deg = (orb.stretch.angle * 180 / Math.PI).toFixed(1), a = orb.stretch.amount;
       orb.el.style.transform = `${translate} rotate(${deg}deg) scale(${(s * a).toFixed(3)}, ${(s / a).toFixed(3)}) rotate(${-deg}deg)`;
+    } else if (orb.rotate) {
+      orb.el.style.transform = `${translate} rotate(${orb.rotate.toFixed(2)}deg) scale(${s.toFixed(3)})`;
     } else {
       orb.el.style.transform = `${translate} scale(${s.toFixed(3)})`;
     }
@@ -1079,20 +1506,12 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
     if (orb.data?.link) post({ type: 'openLink', url: orb.data.link });
   }, true);
 
-  /// The waiting orb he holds out: the first, in arrival order.
-  function firstWaiting() {
-    for (const id of order) { const orb = orbs.get(id); if (orb?.mode === 'waiting' && orb.phase !== 'leaving' && orb.wait?.index === 0) return orb; }
-    return null;
-  }
 
   return {
     update,
     frame,
-    /// What his eyes should follow: the viewer while any orb waits, an orb he is swallowing,
-    /// or the newest orb for a moment.
+    /// What his eyes should follow: an orb he is swallowing, or the newest orb for a moment.
     attention(t) {
-      const waiting = firstWaiting();
-      if (waiting) return { kind: 'waiting', x: waiting.page.x, y: waiting.page.y };
       for (const orb of orbs.values()) {
         if (orb.phase === 'leaving' && orb.leaveTo === 'mouth' && t >= orb.t0) return { kind: 'point', x: orb.page.x, y: orb.page.y };
       }
@@ -1101,13 +1520,97 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       return null;
     },
     /// An orb by id, while it is on screen.
+    /// A message landed on this orb (pet.js's glint): it gulps, squashing along `angle` (radians,
+    /// page), flashing `color` (CSS). If it came off the queue, its front seed is drawn in, one for
+    /// each message taken off the queue since the last gulp.
+    gulp(id, { angle = 0, color = '#fff1d0', fromQueue = false } = {}) {
+      const orb = orbs.get(id);
+      if (!orb || orb.phase === 'leaving') return;
+      orb.gulp = { t0: clock, angle };
+      orb.el.style.setProperty('--gulp-color', color);
+      const q = orb.queued;
+      if (fromQueue) {
+        for (let i = 0; i < Math.max(1, q.eating) && q.seeds.length; i += 1) {
+          const s = q.seeds.shift();
+          q.gone.push({ x: s.x, y: s.y, size: s.size, turn: s.turn, t0: clock + 0.12 * i, eaten: true });
+        }
+        q.eating = 0;
+      }
+    },
+    /// Pull request rings to draw (effects.js): each orb whose thread has one, where it is.
+    prRings() {
+      const out = [];
+      for (const orb of orbs.values()) {
+        if (!orb.data.pr || orb.phase === 'leaving' || orb.mode === 'sat' || orb.mode === 'egg') continue;
+        out.push({ id: orb.id, state: orb.data.pr, x: orb.page.x, y: orb.page.y, size: ORB * orb.scale, opacity: orb.opacity, back: orb.layer === back, roll: orb.ring?.roll ?? 0 });
+      }
+      return out;
+    },
+    /// The queue seeds to draw (effects.js): per orb, page points, length, which way each points
+    /// (page radians), fade, and its side.
+    queueSeeds() {
+      const out = [];
+      for (const orb of orbs.values()) {
+        const q = orb.queued;
+        if (!q.seeds.length && !q.gone.length) continue;
+        const behind = orb.layer === back;
+        const points = q.seeds.map((s) => ({ x: s.x, y: s.y, size: s.size, turn: s.turn, back: behind }));
+        for (const g of q.gone) {
+          const u = clamp01((clock - g.t0) / (g.eaten ? SEED_EAT_S : SEED_DROP_S));
+          if (g.eaten) {
+            const e = reduced ? 0 : easeIn(u);
+            points.push({ x: lerp(g.x, orb.page.x, e), y: lerp(g.y, orb.page.y, e), size: g.size * (1 - 0.5 * e), turn: g.turn, opacity: reduced ? 1 - u : 1, back: behind });
+          } else {
+            points.push({ x: g.x, y: g.y, size: g.size * (1 - u), turn: g.turn, opacity: 1 - u, back: behind });
+          }
+        }
+        // The queue is its owner's: warm white, like a glint from them.
+        out.push({ id: orb.id, color: 0xfff1d0, points });
+      }
+      return out;
+    },
     orbById(id) { const orb = orbs.get(id); return orb && orb.phase !== 'leaving' ? orb : null; },
-    firstWaiting,
+    /// The question that has waited longest, while one does.
+    get oldestAskOrb() {
+      let oldest = null;
+      for (const orb of orbs.values()) if (orb.mode === 'waiting' && orb.phase !== 'leaving' && (!oldest || orb.wait?.index < oldest.wait?.index)) oldest = orb;
+      return oldest;
+    },
+    /// Which side of him a question waits on: 1 right, -1 left, 0 while it has no place.
+    askSide(id) { const orb = orbs.get(id); return orb?.mode === 'waiting' && orb.wait ? askSide(orb) : 0; },
+    /// The question marks to draw (effects.js): each waiting orb's dot, page px and size, what it
+    /// asks, how long it has waited, and, once answered, how far its hook has gone back in.
+    asks() {
+      const out = [];
+      for (const orb of orbs.values()) {
+        const answered = orb.answeredAt != null ? (clock - orb.answeredAt) / ASK_RETRACT_S : null;
+        if (orb.mode !== 'waiting' && !(answered !== null && answered < 1)) continue;
+        if (orb.phase === 'spawning' && orb.mode !== 'waiting') continue;
+        out.push({
+          id: orb.id, x: orb.page.x, y: orb.page.y, size: ORB * orb.scale, opacity: orb.opacity,
+          kind: ASK_MARK[orb.data.waitingFor] ?? '!', seed: orb.seed,
+          formed: clamp01((clock - (orb.askedAt ?? clock)) / ASK_FORM_S), waited: clock - (orb.waitSince ?? orb.askedAt ?? clock),
+          retract: orb.mode === 'waiting' ? 0 : clamp01(answered), gone: orb.phase === 'leaving',
+        });
+      }
+      return out;
+    },
     get waitingCount() { let n = 0; for (const orb of orbs.values()) if (orb.mode === 'waiting' && orb.phase !== 'leaving') n += 1; return n; },
     /// A settled, working orb with something to say, for him to mention unprompted.
     pickChatty() {
       const live = [...orbs.values()].filter((o) => o.phase === 'live' && (o.mode === 'main' || o.mode === 'sat') && o.data.activity && o.opacity > 0.5);
       return live.length ? live[Math.floor(Math.random() * live.length)] : null;
+    },
+    /// How hard the busiest five orbs are working, 0 .. 1 (their mean activity).
+    get fleet() {
+      const acts = [...orbs.values()].filter((o) => o.phase === 'live' && (o.mode === 'main' || o.mode === 'sat')).map((o) => o.act.x).sort((a, b) => b - a).slice(0, 5);
+      return acts.length ? acts.reduce((s, a) => s + a, 0) / acts.length : 0;
+    },
+    /// Seconds the longest-waiting question or approval has waited.
+    get oldestAsk() {
+      let oldest = 0;
+      for (const orb of orbs.values()) if (orb.waitSince != null && orb.phase !== 'leaving') oldest = Math.max(oldest, clock - orb.waitSince);
+      return oldest;
     },
     /// Failed orbs nobody has looked at yet.
     get unseenFailures() { return [...orbs.values()].filter((o) => o.mode === 'failed' && o.seenAt === null && o.phase !== 'leaving'); },
@@ -1136,6 +1639,10 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       return false;
     },
     setReducedMotion(value) { reduced = !!value; },
+    /// Each ring's angle (rad), mean activity and base speed (rad/s), for checks.
+    rings() { return ringPhase.map((p, k) => ({ phase: p.value, act: ringAct[k] ?? 0, base: ringSpec(k, geo).speed })); },
+    /// The feed cannot see T3 right now: orbs hold their breath until it can.
+    setStale(value) { feedStale = !!value; },
     /// Drops every orb at once, with no flight or swallow: the demo (demo.js) clears the stage with it.
     reset() {
       for (const orb of [...orbs.values()]) { for (const f of orb.doom?.filters || []) f.el.remove(); remove(orb); }
@@ -1150,8 +1657,9 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, holdAncho
       return [...orbs.values()].map((o) => ({
         id: o.id, phase: o.phase, mode: o.mode, parent: o.mode === 'sat' ? o.data.parentId : null, children: o.children,
         x: Math.round(o.page.x), y: Math.round(o.page.y), scale: +o.scale.toFixed(2), opacity: +o.opacity.toFixed(2), depth: +o.depth.toFixed(2),
-        ring: o.target?.ring ?? o.sat?.ring ?? null, pace: o.pace, stale: +o.stale.toFixed(2), seen: o.seenAt !== null, kept: o.kept,
-        dying: o.leaveTo === 'dissolve' && o.phase === 'leaving',
+        ring: o.target?.ring ?? o.sat?.ring ?? null, pace: o.pace, stale: +o.stale.toFixed(2), seen: o.seenAt !== null, kept: o.kept, mending: o.mendAt != null,
+        dying: o.leaveTo === 'dissolve' && o.phase === 'leaving', leaving: o.phase === 'leaving' ? o.leaveTo : null, pulse: +o.breathShown.toFixed(4),
+        egg: o.eggRank, hatching: o.hatchAt != null, rotate: +o.rotate.toFixed(2),
       }));
     },
   };
@@ -1233,10 +1741,10 @@ const CRACK_SVG = `<svg viewBox="0 0 100 100" aria-hidden="true"><g fill="none" 
 <path d="M49 63 L66 57 L78 66 M36 42 L44 27 L60 22 M66 57 L72 41" stroke="rgba(255,226,226,.5)" stroke-width="4"/>
 <path d="M49 63 L66 57 L78 66 M36 42 L44 27 L60 22 M66 57 L72 41" stroke="#3a0612" stroke-width="2"/></g></svg>`;
 
-/// A full-page canvas at the bottom of a layer, for energy lines.
-function makeCanvas(layer) {
+/// A full-page canvas at the bottom of a layer, for energy lines (or, with `extra`, wherever that class puts it).
+function makeCanvas(layer, extra = '') {
   const c = document.createElement('canvas');
-  c.className = 'orbit-lines';
+  c.className = `orbit-lines ${extra}`.trim();
   layer.prepend(c);
   return c;
 }

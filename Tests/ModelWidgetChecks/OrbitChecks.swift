@@ -212,42 +212,16 @@ extension ModelWidgetChecks {
 
         // MARK: Snapshot and diff
 
-        suite.check("Orbit diff reports added and removed ids") {
-            let old = OrbitSnapshot(orbs: [orb("t3:a"), orb("t3:b"), orb("t3:c")])
-            let new = OrbitSnapshot(orbs: [orb("t3:b"), orb("t3:d"), orb("t3:c"), orb("t3:e")])
-            let diff = OrbitDiff.diff(old: old, new: new)
-            try expectEqual(diff.added, ["t3:d", "t3:e"])
-            try expectEqual(diff.removed, ["t3:a"])
-            let none = OrbitDiff.diff(old: new, new: new)
-            try expect(none.added.isEmpty && none.removed.isEmpty, "same snapshot has no changes")
-        }
-
-        suite.check("Orbit snapshot merges sources and only sends changes") {
-            let merged = OrbitSnapshot.merged([[orb("t3:b"), orb("t3:a")], [orb("grok:z", source: .grok), orb("t3:a")]])
-            try expectEqual(merged.orbs.map(\.id), ["grok:z", "t3:a", "t3:b"])
-            var gate = OrbitChangeGate()
-            let first = try expectNotNilValue(gate.jsonIfChanged(merged))
-            try expect(first.hasPrefix(#"{"orbs":[{"#), "JSON is a snapshot object: \(first.prefix(40))")
-            try expectEqual(gate.jsonIfChanged(OrbitSnapshot.merged([[orb("t3:a"), orb("t3:b")], [orb("grok:z", source: .grok)]])), nil)
-            var changed = merged
-            changed.orbs[1].label = "renamed"
-            try expect(gate.jsonIfChanged(changed) != nil, "a changed label is a change")
-            try expect(gate.jsonIfChanged(OrbitSnapshot()) == #"{"orbs":[]}"#, "an emptied orbit is sent")
-            try expectEqual(gate.jsonIfChanged(OrbitSnapshot()), nil)
-            gate.reset()
-            try expect(gate.jsonIfChanged(OrbitSnapshot()) != nil, "after a reset the snapshot is sent again")
-        }
-
-        suite.check("Orbit snapshot JSON round-trips with the optional link") {
-            let snapshot = OrbitSnapshot(orbs: [Orb(id: "t3:a", source: .t3, projectIcon: .image(dataURL: "data:image/png;base64,AA=="), provider: "codex", label: "x", link: "http://127.0.0.1:3773/e/a")])
-            let decoded = try JSONDecoder().decode(OrbitSnapshot.self, from: Data(snapshot.json().utf8))
+        suite.check("Feed state JSON round-trips with the optional link") {
+            let snapshot = FeedState(orbs: [Orb(id: "t3:a", source: .t3, projectIcon: .image(dataURL: "data:image/png;base64,AA=="), provider: "codex", label: "x", link: "http://127.0.0.1:3773/e/a")])
+            let decoded = try JSONDecoder().decode(FeedState.self, from: Data(FeedJSON.encode(snapshot).utf8))
             try expectEqual(decoded, snapshot)
-            try expect(snapshot.json().contains(#""src":"data:image/png;base64,AA==""#), "data URLs keep their slashes unescaped")
+            try expect(FeedJSON.encode(snapshot).contains(#""src":"data:image/png;base64,AA==""#), "data URLs keep their slashes unescaped")
         }
 
         suite.check("A satellite's activity reaches the pet page with its parent id") {
             let satellite = Orb(id: "t3:node:provider:claudeAgent:native-item:task%3Aa5b0", parentId: "t3:6d82", source: .t3, projectIcon: .monogram("WS", color: "#000000"), provider: "claudeAgent", activity: "running swift build")
-            let json = OrbitSnapshot(orbs: [satellite]).json()
+            let json = FeedJSON.encode(FeedState(orbs: [satellite]))
             try expect(json.contains(#""activity":"running swift build""#) && json.contains(#""parentId":"t3:6d82""#), "satellite JSON: \(json)")
         }
 

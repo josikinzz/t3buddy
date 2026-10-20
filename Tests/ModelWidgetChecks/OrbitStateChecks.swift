@@ -1,5 +1,4 @@
 import Foundation
-import JavaScriptCore
 import ModelWidgetCore
 
 extension ModelWidgetChecks {
@@ -46,10 +45,20 @@ extension ModelWidgetChecks {
             try expectEqual(answered.map(\.state), [.active])
         }
 
-        suite.check("A held orb asks with a \"?\" when its thread wants your input, and alerts with \"!\" for an approval") {
+        suite.check("A waiting orb tells the page whether its thread wants your input or an approval") {
             // `t3_pending_request_list` lists only questions; `pendingRequestCount` counts approvals too.
             let questions = try T3Payload.pendingQuestionIds(try toolPayload(wrap(#"{"requestIds":["request:q1"]}"#)))
             try expectEqual(questions, ["request:q1"])
+            // `t3_queue_list` (flag `queue`): the messages waiting behind the running turn.
+            try expectEqual(try T3Payload.queuedCount(try toolPayload(wrap(#"{"items":[{"id":"q1"},{"id":"q2"}],"nextCursor":null}"#))), 2)
+            // `list_scheduled_tasks` (flag `seeds`): enabled tasks only, soonest first, with the provider's kind.
+            let tasks = #"{"tasks":[{"id":"later","enabled":true,"nextRunAt":"2026-10-16T12:00:00Z","lastRunStatus":"succeeded","modelSelection":{"instanceId":"codex-main","model":"m"}},{"id":"off","enabled":false,"nextRunAt":"2026-10-16T09:00:00Z"},{"id":"soon","enabled":true,"nextRunAt":"2026-10-16T10:00:00.000Z","lastRunAt":"2026-10-15T10:00:00Z","lastRunStatus":"failed","threadId":"thread-7","modelSelection":{"instanceId":"claudeAgent"}}]}"#
+            let seeds = try T3Payload.seeds(try toolPayload(wrap(tasks)), providers: ["codex-main": "codex"])
+            try expectEqual(seeds.map(\.id), ["soon", "later"])
+            try expectEqual(seeds.map(\.provider), ["claudeAgent", "codex"])
+            try expect(seeds[0].failed && !seeds[1].failed, "a failed last run cracks the seed")
+            try expectEqual(seeds[0].orbId, T3OrbMapper.orbId("thread-7"))
+            try expect(seeds[0].lastRun != nil && seeds[1].lastRun == nil, "lastRunAt is carried")
             let parent = T3Thread(threadId: "parent-1", title: "orbit work", status: T3ThreadStatus(rawValue: "running"), providerInstanceId: "claudeAgent")
             func held(requests: Int, questions: Int) -> Orb? {
                 T3OrbMapper.orbs(project: project, threads: [parent], icon: icon, pendingRequests: ["parent-1": requests], pendingQuestions: ["parent-1": questions]).first
@@ -58,19 +67,9 @@ extension ModelWidgetChecks {
             try expectEqual(held(requests: 2, questions: 1)?.waitingFor, .input)
             try expectEqual(held(requests: 1, questions: 0)?.waitingFor, .approval)
             try expectEqual(held(requests: 0, questions: 0)?.waitingFor, nil)
-            let json = String(decoding: try JSONEncoder().encode(OrbitSnapshot(orbs: held(requests: 1, questions: 1).map { [$0] } ?? [])), as: UTF8.self)
+            let json = String(decoding: try JSONEncoder().encode(FeedState(orbs: held(requests: 1, questions: 1).map { [$0] } ?? [])), as: UTF8.self)
             try expect(json.contains(#""waitingFor":"input""#), "the page receives waitingFor: \(json)")
-
-            // The page draws the mark from orbit.js's WAIT_MARK table.
-            let orbit = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../Resources/Pet/orbit.js").standardizedFileURL
-            let source = try String(contentsOf: orbit, encoding: .utf8)
-            guard let line = source.split(separator: "\n").first(where: { $0.hasPrefix("const WAIT_MARK = ") }),
-                  let table = line.dropFirst("const WAIT_MARK = ".count).split(separator: ";").first,
-                  let marks = JSContext()?.evaluateScript("(\(table))")?.toDictionary() as? [String: String] else {
-                throw CheckFailure.message("orbit.js has no WAIT_MARK table")
-            }
-            try expectEqual(marks[Orb.WaitingFor.input.rawValue], "?")
-            try expectEqual(marks[Orb.WaitingFor.approval.rawValue], "!")
+            // Which mark each wait draws: Tests/Pet/orbit.test.mjs, against the real orbit.
         }
 
         // MARK: Failed retention
@@ -271,26 +270,13 @@ extension ModelWidgetChecks {
             try expectEqual(reloaded, T3MCPCredentials(token: token, clientId: "client-1"))
             reloaded.retireToken()
             try expectEqual(reloaded, T3MCPCredentials(token: nil, clientId: "client-1", staleSessionIds: ["old-session"]))
-        }
 
-        await suite.check("A hung orbit source misses its deadline and falls back for one interval only") {
-            let fast = await OrbitPolling.withDeadline(1) { 7 }
-            try expectEqual(fast, 7)
-            let started = Date()
-            let hung: Int? = await OrbitPolling.withDeadline(0.05) {
-                try? await Task.sleep(nanoseconds: 30_000_000_000)
-                return 1
-            }
-            try expectEqual(hung, nil)
-            try expect(Date().timeIntervalSince(started) < 2, "the deadline returns without waiting for the work")
-
-            let t0 = Date(timeIntervalSince1970: 3_000_000)
-            var fallback = OrbitSourceFallback(maxAge: 6)
-            let orbs = [Orb(id: "t3:a", source: .t3, projectIcon: icon, provider: "codex")]
-            try expectEqual(fallback.resolve(source: 0, result: orbs, now: t0), orbs)
-            try expectEqual(fallback.resolve(source: 0, result: nil, now: t0.addingTimeInterval(5)), orbs)
-            try expectEqual(fallback.resolve(source: 0, result: nil, now: t0.addingTimeInterval(10)), [])
-            try expectEqual(fallback.resolve(source: 1, result: nil, now: t0), [])
+            // The helper and the app's fallback each keep a store on this file.
+            let other = T3TokenFileStore(url: url)
+            _ = other.load()
+            let minted = T3MCPToken(accessToken: bearer(["v": 1, "kind": "session", "sid": "new-session"]), expiresAt: nil)
+            store.save(T3MCPCredentials(token: minted, clientId: "client-1"))
+            try expectEqual(other.load().token, minted)
         }
 
         // MARK: Orb identity
@@ -332,38 +318,6 @@ extension ModelWidgetChecks {
             try expectEqual(T3OrbMapper.holdingParents(satellites) { _ in nil }.map(\.id), ["t3:node:sounds"])
         }
 
-        suite.check("An orb missing from one poll stays as it was; missing from two polls it goes") {
-            func orb(_ id: String, parent: String? = nil, activity: String? = nil) -> Orb {
-                Orb(id: id, parentId: parent, source: .t3, projectIcon: icon, provider: "claudeAgent", activity: activity)
-            }
-            var hold = OrbitRemovalHold()
-            let full = OrbitSnapshot(orbs: [orb("t3:a", activity: "reading pet.js"), orb("t3:b")])
-            try expectEqual(hold.apply(full), full)
-            // A gap between two turns, a failed read, a timed-out source: same orb, last data.
-            try expectEqual(hold.apply(OrbitSnapshot(orbs: [orb("t3:b")])), full)
-            let back = OrbitSnapshot(orbs: [orb("t3:a", activity: "running swift build"), orb("t3:b")])
-            try expectEqual(hold.apply(back), back)
-            // A real finish: gone after the second poll without it.
-            try expectEqual(hold.apply(OrbitSnapshot(orbs: [orb("t3:b")])).orbs.map(\.id), ["t3:a", "t3:b"])
-            try expectEqual(hold.apply(OrbitSnapshot(orbs: [orb("t3:b")])).orbs.map(\.id), ["t3:b"])
-            // A whole empty poll is a gap too.
-            try expectEqual(hold.apply(OrbitSnapshot()).orbs.map(\.id), ["t3:b"])
-            try expectEqual(hold.apply(OrbitSnapshot()).orbs, [])
-        }
-
-        suite.check("A parent missing from the snapshot is held while its satellites are in orbit") {
-            func orb(_ id: String, parent: String? = nil) -> Orb {
-                Orb(id: id, parentId: parent, source: .t3, projectIcon: icon, provider: "claudeAgent")
-            }
-            var hold = OrbitRemovalHold()
-            _ = hold.apply(OrbitSnapshot(orbs: [orb("t3:p"), orb("t3:s1", parent: "t3:p"), orb("t3:s2", parent: "t3:s1")]))
-            for _ in 0..<5 {
-                let shown = hold.apply(OrbitSnapshot(orbs: [orb("t3:s2", parent: "t3:s1")]))
-                try expectEqual(shown.orbs.map(\.id), ["t3:p", "t3:s1", "t3:s2"])
-            }
-            _ = hold.apply(OrbitSnapshot())
-            try expectEqual(hold.apply(OrbitSnapshot()).orbs, [])
-        }
     }
 }
 

@@ -37,7 +37,7 @@ public enum GrokRosterReader {
     public static let appIconPath = "./badges/grokBot.png"
     static let avatarPixelSize = 96
 
-    private static let accountPrefix = "sand.client.slice.account."
+    static let accountPrefix = "sand.client.slice.account."
     private static let rosterSuffix = ".roster.last-roster"
     private static let replicaInfix = ".transcript.replicas."
     private static let logger = Logger(subsystem: "local.codex.LocalModelWidget", category: "Orbit")
@@ -326,8 +326,9 @@ public final class GrokAvatarCache: @unchecked Sendable {
 }
 
 /// The live Grok Bot orbit source. Reads the real paths on each call; contributes nothing while Grok Bot is closed.
-/// One of the `OrbitRuntime` sources, next to the T3 thread source.
-public actor GrokOrbitSource: OrbitSource {
+/// One of the feed's sources (`FeedEngine`), next to the T3 thread source. A roster it cannot
+/// read is nil, never an empty orbit; Grok Bot not running is `[]`.
+public actor GrokOrbitSource {
     public static let bundleIdentifier = "com.anysphere.sand"
 
     public static var defaultPersistenceFolder: URL {
@@ -358,7 +359,7 @@ public actor GrokOrbitSource: OrbitSource {
         self.notice = notice
     }
 
-    public func orbs(now: Date) async -> [Orb] {
+    public func orbs(now: Date) async -> [Orb]? {
         guard isAppRunning() else { return [] }
         var notices: [String] = []
         let orbs = GrokRosterReader.read(persistenceFolder: persistenceFolder, daemonState: daemonState, now: now, avatarCache: avatarCache) { notices.append($0) }

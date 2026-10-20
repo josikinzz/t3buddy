@@ -1,7 +1,6 @@
 import LocalModelWidgetPanel
 import SwiftUI
 
-/// Every card in one masonry grid. Drag a card onto another to take its slot.
 struct DashboardView: View {
     @ObservedObject var dashboard: DashboardRuntime
     @State private var dragging: DashboardCard?
