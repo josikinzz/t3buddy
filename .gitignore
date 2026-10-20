@@ -8,6 +8,11 @@ xcuserdata/
 # Packaged app, generated LaunchAgent plist and screenshots (written by scripts/)
 outputs/
 
+# Before/after captures and previews made while working on a change; never published
+docs/*-before*.png
+docs/*-after*.png
+docs/preview-*
+
 # Local planning notes and design-tool caches
 .scratch/
 .impeccable/
