@@ -3,13 +3,16 @@
 
     python3 -I scripts/pet_stills.py capture OUTDIR [--pet KIND] [SCENE ...]
     python3 -I scripts/pet_stills.py compare BEFORE AFTER
+    python3 -I scripts/pet_stills.py film OUTDIR SCENE [--pet KIND] [--fps N] [--from SECONDS]
 
 `capture` serves Resources/ on loopback, opens Pet/index.html?still=SCENE&pet=KIND (still.js plays
 the scene on a synthetic clock) and saves OUTDIR/KIND-SCENE.png once the page's title says it is
 done, with OUTDIR/KIND-SCENE.json beside it: hit regions, anchors, orbit geometry, orbs and mood,
 which the pixels don't show. Rendering is software (SwiftShader), so the same tree gives the same
 pixels. `compare` prints, per same-named file, identical bytes or how many pixels differ (or whether
-the state matches), and exits 1 on any difference.
+the state matches), and exits 1 on any difference. `film` saves OUTDIR/KIND-SCENE-0000.png and on,
+N frames a second of scene time (default 6) from SECONDS (default 0) to the scene's end, for
+ffmpeg.
 """
 
 import base64
@@ -27,7 +30,8 @@ import zlib
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CHROME = os.environ.get("CHROME", "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome")
-SCENES = ["idle", "busy", "swallow", "fretful", "eggs", "cry", "weep", "blink", "sleep", "dance", "shake", "spawn", "power"]
+SCENES = ["idle", "busy", "swallow", "fretful", "eggs", "cry", "weep", "blink", "sleep", "dance", "shake", "spawn", "power",
+          "dozy", "focused", "satisfied", "look", "bright"]
 VIEW = {"width": 1200, "height": 1000}
 SCENE_TIMEOUT_S = 180
 # What the pixels don't show, saved beside each still: hit regions, anchors, the ball, orbit geometry, mood
@@ -100,6 +104,51 @@ def serve(directory):
     return server
 
 
+def open_scene(chrome, server, scene, pet, extra=""):
+    """A new tab playing `scene`; returns its target, session and final title."""
+    target = chrome.call("Target.createTarget", {"url": "about:blank"})["targetId"]
+    session = chrome.call("Target.attachToTarget", {"targetId": target, "flatten": True})["sessionId"]
+    chrome.call("Runtime.enable", session=session)
+    chrome.call("Emulation.setDeviceMetricsOverride", {**VIEW, "deviceScaleFactor": 1, "mobile": False}, session=session)
+    chrome.log = []
+    url = f"http://127.0.0.1:{server.server_port}/Pet/index.html?still={scene}&pet={pet}{extra}"
+    chrome.call("Page.navigate", {"url": url}, session=session)
+    deadline, title = time.time() + SCENE_TIMEOUT_S, ""
+    while time.time() < deadline:
+        title = chrome.call("Runtime.evaluate", {"expression": "document.title", "returnByValue": True}, session=session)["result"].get("value", "")
+        if title.startswith(f"still:{scene}:"):
+            break
+        time.sleep(0.2)
+    return target, session, title
+
+
+def film(out, pet, scene, fps, start):
+    if not os.access(CHROME, os.X_OK):
+        sys.exit(f"pet_stills: no Chrome at {CHROME} (set CHROME)")
+    os.makedirs(out, exist_ok=True)
+    server = serve(os.path.join(ROOT, "Resources"))
+    with tempfile.TemporaryDirectory() as profile:
+        chrome = DevTools(profile)
+        try:
+            _, session, title = open_scene(chrome, server, scene, pet, f"&film={fps}&from={start}")
+            if title != f"still:{scene}:done":
+                print(f"pet_stills: {pet} {scene} did not start filming (title {title!r}) {' | '.join(chrome.log)}", file=sys.stderr)
+                return 1
+            count = 0
+            while True:
+                shot = chrome.call("Page.captureScreenshot", {"format": "png"}, session=session)
+                open(os.path.join(out, f"{pet}-{scene}-{count:04d}.png"), "wb").write(base64.b64decode(shot["data"]))
+                count += 1
+                more = chrome.call("Runtime.evaluate", {"expression": "window.__stillNext()", "returnByValue": True}, session=session)["result"].get("value")
+                if not more:
+                    break
+            print(f"{out}: {count} frames")
+        finally:
+            chrome.close()
+            server.shutdown()
+    return 0
+
+
 def capture(out, pet, scenes):
     if not os.access(CHROME, os.X_OK):
         sys.exit(f"pet_stills: no Chrome at {CHROME} (set CHROME)")
@@ -110,19 +159,7 @@ def capture(out, pet, scenes):
         chrome = DevTools(profile)
         try:
             for scene in scenes:
-                target = chrome.call("Target.createTarget", {"url": "about:blank"})["targetId"]
-                session = chrome.call("Target.attachToTarget", {"targetId": target, "flatten": True})["sessionId"]
-                chrome.call("Runtime.enable", session=session)
-                chrome.call("Emulation.setDeviceMetricsOverride", {**VIEW, "deviceScaleFactor": 1, "mobile": False}, session=session)
-                chrome.log = []
-                url = f"http://127.0.0.1:{server.server_port}/Pet/index.html?still={scene}&pet={pet}"
-                chrome.call("Page.navigate", {"url": url}, session=session)
-                deadline, title = time.time() + SCENE_TIMEOUT_S, ""
-                while time.time() < deadline:
-                    title = chrome.call("Runtime.evaluate", {"expression": "document.title", "returnByValue": True}, session=session)["result"].get("value", "")
-                    if title.startswith(f"still:{scene}:"):
-                        break
-                    time.sleep(0.2)
+                target, session, title = open_scene(chrome, server, scene, pet)
                 png = os.path.join(out, f"{pet}-{scene}.png")
                 if title == f"still:{scene}:done":
                     shot = chrome.call("Page.captureScreenshot", {"format": "png"}, session=session)
@@ -229,6 +266,10 @@ def compare(before, after):
 def main(argv):
     if len(argv) >= 3 and argv[0] == "compare":
         return compare(argv[1], argv[2])
+    if len(argv) >= 3 and argv[0] == "film":
+        out, scene, rest = argv[1], argv[2], argv[3:]
+        options = dict(zip(rest[::2], rest[1::2]))
+        return film(out, options.get("--pet", "t3boii"), scene, float(options.get("--fps", 6)), float(options.get("--from", 0)))
     if len(argv) >= 2 and argv[0] == "capture":
         out, rest, pet = argv[1], argv[2:], "t3boii"
         if rest[:1] == ["--pet"]:

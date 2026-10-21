@@ -7,9 +7,12 @@ SOURCE (default .scratch/shoggoth-source/shoggoth.glb) holds four scenes; only t
 `shoggoth` is the pet. OUT (default Resources/Pet/shoggoth.glb) keeps that scene and what it
 uses, drops the second UV set no material reads, and puts the creature on the origin: centred
 in x and z, its underside at y = 0, as T3boii stands. The normal map is shrunk to 512 px with `sips`
-(which also writes it at 8 bits a channel, from 16). Standard library only, so it reruns anywhere the source is.
+(which also writes it at 8 bits a channel, from 16). The eye textures (`eye`, `eyeface`) are drawn
+anew by scripts/draw_shoggoth_eyes.py in place of the owner's. Standard library only, so it reruns
+anywhere the source is.
 """
 
+import importlib.util
 import json
 import os
 import struct
@@ -58,6 +61,13 @@ def shrink_png(png):
         open(source, "wb").write(png)
         subprocess.run(["sips", "-Z", str(NORMAL_MAP_PX), source, "--out", small], check=True, stdout=subprocess.DEVNULL)
         return open(small, "rb").read()
+
+
+def drawn_eyes():
+    spec = importlib.util.spec_from_file_location("draw_shoggoth_eyes", os.path.join(ROOT, "scripts/draw_shoggoth_eyes.py"))
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.atlases()
 
 
 def strip(gltf, binary):
@@ -113,6 +123,7 @@ def strip(gltf, binary):
                      for m in remap["materials"] if "normalTexture" in gltf["materials"][m]}
 
     # Copy each kept view's bytes into a fresh buffer, 4-byte aligned.
+    drawn = drawn_eyes()
     blob, views = bytearray(), []
     for old in sorted(remap["bufferViews"], key=remap["bufferViews"].get):
         view = dict(gltf["bufferViews"][old])
@@ -120,6 +131,8 @@ def strip(gltf, binary):
         image = next((i for i in remap["images"] if gltf["images"][i]["bufferView"] == old), None)
         if image in normal_images:
             chunk = shrink_png(chunk)
+        elif image is not None and gltf["images"][image].get("name") in drawn:
+            chunk = drawn[gltf["images"][image]["name"]]
         blob += b"\0" * (-len(blob) % 4)
         view.update(buffer=0, byteOffset=len(blob), byteLength=len(chunk))
         blob += chunk

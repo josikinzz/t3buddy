@@ -1,0 +1,1 @@
+1. **nit** — `scripts/draw_shoggoth_eyes.py:23`: The header points to deleted `shoggoth-eyeface.js`; line 7 also promises 8× previews for both textures, but `main()` uses 4× for the flower. Update the shader reference to `shoggoth-eyes.js` and describe the two preview scales.

@@ -89,6 +89,8 @@ export function createMood() {
     get mood() { return base; },
     get eating() { return mealUntil; },
     get weights() { return Object.fromEntries(MOODS.map((m) => [m, +Math.max(0, weights[m].x).toFixed(3)])); },
+    get dozy() { return Math.max(0, weights.dozy.x); },
+    get focused() { return Math.max(0, weights.focused.x); },
     get fretful() { return Math.max(0, weights.fretful.x); },
     get satisfied() { return Math.max(0, weights.satisfied.x); },
   };

@@ -54,9 +54,10 @@ The feed, in the order data flows:
 | | `orbit.js` | orbs, rings, marks, eggs, labels, hit regions (DOM canvases) |
 | | `effects.js` | lit 3D effects: glints, marks, seeds, rings |
 | | `pet.js`, `mood.js`, `motion.js`, `skinning.js`, `sounds.js`, `demo.js` | the shared brain (what is going on, reduced to one pose a frame), rig float and sway, frame loop, moods, motion primitives, sound, demo |
-| | `bodies/index.js`, `bodies/t3boii.js`, `bodies/shoggoth.js`, `bodies/shoggoth-eyeface.js` | the pets by kind; each pet's model, ball, anchors, and how it turns the pose into motion |
-| | `still.js`, `scripts/pet_stills.py` | `?still=<scene>&pet=<kind>`: deterministic scenes, captured headless |
-| | `scripts/strip_shoggoth_glb.py` | `Resources/Pet/shoggoth.glb`, cut from the owner's export (kept out of git under `.scratch/`) |
+| | `bodies/index.js`, `bodies/t3boii.js`, `bodies/shoggoth.js` | the pets by kind; each pet's model, ball, anchors, and how it turns the pose into motion |
+| | `bodies/shoggoth-face.js`, `bodies/shoggoth-eyes.js` | the shoggoth's one table of state to eyes and mask emote, its mask's U strokes (the w kept as is); its eye shader (iris looks, lids, the flower's tint) |
+| | `still.js`, `scripts/pet_stills.py` | `?still=<scene>&pet=<kind>`: deterministic scenes, captured headless; `film` saves a scene's frames for a clip |
+| | `scripts/strip_shoggoth_glb.py`, `scripts/draw_shoggoth_eyes.py` | `Resources/Pet/shoggoth.glb`, cut from the owner's export (kept out of git under `.scratch/`), with the eye textures the second script draws |
 
 Cards: `Sources/ModelWidgetCore` reads (`LocalModelSession`, `SubscriptionUsage`, `TokenUsage`,
 `SystemProcessSampler`), `Sources/LocalModelWidgetPanel` lays out, `Sources/LocalModelWidget` shows

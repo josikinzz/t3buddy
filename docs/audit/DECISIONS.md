@@ -173,3 +173,9 @@ All 36 accepted findings shipped as planned; `scripts/verify.sh --full` is green
 | owner ask: busy-state white blobs | ADDRESSED in part | Below full power the glow keeps pupils and irises showing. At 15 and over the eyes are still white across, as DESIGN.md says; changing that is the owner's call. |
 
 T3boii's 11 stills stayed byte-identical through every fix (`compare` exit 0).
+
+## Review: shoggoth eyes v2
+
+`review-shoggoth-eyes.md`: one nit, ADDRESSED. `draw_shoggoth_eyes.py`'s header named the deleted
+`shoggoth-eyeface.js` and promised 8x previews for both textures; it now names `shoggoth-eyes.js`
+and says 8x for `eye`, 4x for `eyeface`.

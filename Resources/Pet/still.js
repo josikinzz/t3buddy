@@ -6,6 +6,10 @@
 // end, and sets the title to `still:<scene>:done` (or `still:<scene>:failed`). Randomness is
 // reseeded every frame, so a change that adds or drops a random draw in one frame cannot shift
 // every later one. Without `?still` this module does nothing.
+//
+// `&film=<fps>&from=<s>` films the scene instead: it renders the first frame at `from` seconds and,
+// each time `window.__stillNext()` is called, the next one 1/fps seconds of scene time later, until
+// the scene's end (scripts/pet_stills.py film).
 
 const query = new URLSearchParams(location.search);
 const sceneName = query.get('still');
@@ -136,6 +140,31 @@ export const STILL_SCENES = {
     ],
   },
   power: { end: 12, at: [[0, { orbs: working(21) }]] },
+  // Moods the shoggoth's face shows (shoggoth-face.js): dozy with nothing to do, focused on several
+  // threads, satisfied just after a meal, and its eyes looking hard to one side with the lids half down.
+  dozy: { end: 14, at: [] },
+  focused: { end: 9, at: [[0, { orbs: working(4) }]] },
+  satisfied: { end: 8.4, at: [[0, { orbs: working(3) }], [6, { orbs: working(2) }]] },
+  look: { end: 6, debug: { lid: 0.45, gaze: { x: 0.9, y: 0.4 } }, at: [] },
+  // Bright: 16 threads, its eyes white and its mask's U's lit, before the mask lifts at 20.
+  bright: { end: 12, at: [[0, { orbs: working(16) }]] },
+  // Its faces in turn, for a film: idle, new agents (surprised), focused, a meal (satisfied), a
+  // failure (a flinch, then fretful), a limit (crying), a crowd (power), all done (the dance),
+  // dozy, asleep.
+  faces: {
+    end: 54,
+    debug: { sleepAfter: 5 },
+    at: [
+      [0, { orbs: [] }],
+      [2.5, { orbs: working(4) }],
+      [9, { orbs: working(3) }],
+      [16, { orbs: [...working(3), thread(9, { state: 'failed' })] }],
+      [22, { orbs: working(4) }],
+      [23, { orbs: limited(working(4), 'codex'), limits: [{ provider: 'codex', since: seconds(23) }] }],
+      [29, { orbs: working(16), limits: [] }],
+      [35, { orbs: [] }],
+    ],
+  },
 };
 
 if (sceneName != null) install(sceneName);
@@ -196,19 +225,26 @@ function install(name) {
     const renderer = t3.internals.renderer;
     const render = renderer.render.bind(renderer);
     const endMs = scene.end * 1000;
+    const film = Number(query.get('film')) || 0;
+    let shotMs = film ? Number(query.get('from') ?? 0) * 1000 : endMs;
     let rendered = false;
-    renderer.render = (s, c) => { if (nowMs >= endMs - 0.5) { render(s, c); rendered = true; } };
+    renderer.render = (s, c) => { if (nowMs >= shotMs - 0.5) { render(s, c); rendered = true; } };
     const actions = scene.at.map(([at, snapshot]) => ({ ms: at * 1000, snapshot }));
-    for (let frame = 1; !rendered && frame < 60 * 600; frame += 1) {
-      nowMs = frame * FRAME_MS;
-      reseed(frame);
-      while (actions.length && actions[0].ms <= nowMs) t3.update(structuredClone(actions.shift().snapshot));
-      scene.drive?.(nowMs / 1000);
-      runTimers();
-      const due = frames;
-      frames = [];
-      for (const f of due) f.fn(nowMs);
-    }
+    let frame = 1;
+    const run = () => {
+      for (rendered = false; !rendered && frame < 60 * 600; frame += 1) {
+        nowMs = frame * FRAME_MS;
+        reseed(frame);
+        while (actions.length && actions[0].ms <= nowMs) t3.update(structuredClone(actions.shift().snapshot));
+        scene.drive?.(nowMs / 1000);
+        runTimers();
+        const due = frames;
+        frames = [];
+        for (const f of due) f.fn(nowMs);
+      }
+    };
+    run();
+    if (film) window.__stillNext = () => { shotMs += 1000 / film; if (shotMs > endMs) return false; run(); return rendered; };
     if (rendered) window.__stillEvidence = scene.evidence?.(t3);
     done(rendered ? 'done' : 'failed');
   };

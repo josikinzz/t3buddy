@@ -10,13 +10,16 @@
 //     a spin or a stretch, curl in when it flinches, sag when it sleeps or is glum, tremble when it
 //     frets, swing on springs when it is shaken, and wave round in turn when it dances;
 //   - the crown of its head is its forehead: it lights violet when an agent spawns, and its eyes
-//     flash with it; its eyes, the flower's too, blink, squint and droop as one, and glow white with power;
+//     flash with it; its eyes, the flower's too, look where it looks, blink, squint and droop as
+//     one, and glow white with power; the U's of its mask's UwU change with its mood
+//     (shoggoth-face.js, one table for both);
 //   - glum over a limit, it darkens, droops, and its eyes weep dark ooze.
 
 import * as THREE from 'three';
 import { GLTFLoader } from '../vendor/three/examples/jsm/loaders/GLTFLoader.js';
 import { Phase, tremble } from '../motion.js';
-import { EYEFACE_MAP_GLSL, EYEFACE_ACROSS_GLSL, FLOWER_EYE_REACH, ALPHA_CUT, parseTint } from './shoggoth-eyeface.js';
+import { BODY_EYE, FLOWER, ALPHA_CUT, EYE_VERTEX_HEAD, EYE_VERTEX, EYE_FRAGMENT_HEAD, eyeMapGlsl, decalAxes, parseTint } from './shoggoth-eyes.js';
+import { faceFor, createMask } from './shoggoth-face.js';
 
 const TAU = Math.PI * 2;
 const clamp = THREE.MathUtils.clamp;
@@ -114,7 +117,8 @@ function assemble({ character, renderer, scene, tint }) {
     uJiggle: { value: new THREE.Vector3() }, uTremble: { value: new THREE.Vector3() }, uWave: { value: new THREE.Vector2() },
     uMouth: { value: toBody(MOUTH) }, uGulp: { value: new THREE.Vector2() }, uSuck: { value: 0 },
     uCrown: { value: toBody(CROWN) }, uPsy: { value: 0 }, uPsyFlare: { value: 0 }, uTime: { value: 0 },
-    uEyes: { value: 0 }, uMouthGlow: { value: 0 }, uBlush: { value: 0 }, uSad: { value: 0 }, uLid: { value: 0 },
+    uEyes: { value: 0 }, uMouthGlow: { value: 0 }, uBlush: { value: 0 }, uSad: { value: 0 },
+    uLids: { value: new THREE.Vector4(0, 0.62, 0, 0) }, uIris: { value: 1 }, uGaze: { value: new THREE.Vector3() },
     uTint: { value: new THREE.Color(parseTint(tint)) },
   };
 
@@ -152,7 +156,7 @@ varying vec3 vRest;
   }`;
   const fragmentHead = `varying vec3 vRest;
 uniform vec3 uCrown, uHeadPivot, uTint;
-uniform float uPsy, uPsyFlare, uTime, uEyes, uMouthGlow, uBlush, uSad, uLid;
+uniform float uPsy, uPsyFlare, uTime, uEyes, uMouthGlow, uBlush, uSad;
 `;
   // Its crown lights violet as an agent leaves it, a ripple running out from the middle; petted, its
   // head flushes pink; glum, it darkens.
@@ -168,70 +172,56 @@ uniform float uPsy, uPsyFlare, uTime, uEyes, uMouthGlow, uBlush, uSad, uLid;
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0, 0.5, 0.62), uBlush * cheek * 0.5);
     diffuseColor.rgb *= 1.0 - 0.32 * uSad;
   }`;
-  // Lids close over an eye from both sides of its middle line: `off` is how far the texel lies from
-  // that line, `reach` how far the eye's edge does, `lash` how wide the dark line along a lid's edge is.
-  const lids = (off, reach, lash) => `
-  float shogLid = 0.0;
-  {
-    float edge = ${reach.toFixed(4)} * (1.0 - uLid);
-    float off = ${off};
-    if (uLid > 0.02 && off > edge) {
-      shogLid = 1.0;
-      diffuseColor.rgb = mix(vec3(0.05, 0.045, 0.06), vec3(0.3, 0.29, 0.32), smoothstep(edge, edge + ${lash.toFixed(4)}, off));
-    }
-  }`;
-  // Every eye: lids close over it from top and bottom; power whitens and lights its bare eye; it
-  // flashes violet with the crown, more the nearer it is.
-  const eyeLids = `#include <map_fragment>
-  // Blender draws the eye texture with Clip; glTF can only say clamp, which smears its edge texels
-  // out across each decal. Outside the texture there is no eye.
-  if (any(lessThan(vMapUv, vec2(0.0))) || any(greaterThan(vMapUv, vec2(1.0)))) diffuseColor.a = 0.0;
-  ${lids('abs(vMapUv.y - 0.5)', 0.37, 0.06)}`;
-  // The eye-flower's eight eyes close across their spokes, with the rest.
-  const flowerLids = `${EYEFACE_MAP_GLSL}
-  ${EYEFACE_ACROSS_GLSL}
-  ${lids('across', FLOWER_EYE_REACH, 0.02)}`;
+  // Every eye (shoggoth-eyes.js): its iris where it looks, lids over the white; power whitens and
+  // lights only bare eye, its pupil and iris showing through until it is white right across, and
+  // it is brightest in the middle; it flashes violet with the crown, more the nearer it is.
   const eyeLight = `#include <emissivemap_fragment>
   {
-    // Inside its outline only, so a lit eye still reads as an eye; its pupil and iris show through
-    // the glow until it is white right across, and it is brightest in the middle.
-    float ring = length((vMapUv - 0.5) / vec2(0.34, 0.25));
-    float bare = (1.0 - shogLid) * (1.0 - smoothstep(0.75, 0.95, ring));
     float ink = 1.0 - smoothstep(0.05, 0.6, dot(diffuseColor.rgb, vec3(0.2126, 0.7152, 0.0722)));
-    float glow = uEyes * bare * (1.0 - 0.95 * ink * (1.0 - smoothstep(0.6, 1.0, uEyes)));
+    float glow = uEyes * shogBare * (1.0 - 0.95 * ink * (1.0 - smoothstep(0.6, 1.0, uEyes)));
     diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), glow);
-    totalEmissiveRadiance += glow * (0.55 + 0.45 * clamp(1.0 - ring, 0.0, 1.0)) * vec3(1.0, 0.99, 1.04) * 1.3;
+    totalEmissiveRadiance += glow * (0.55 + 0.45 * (1.0 - shogRing)) * vec3(1.0, 0.99, 1.04) * 1.3;
     float near = 1.0 - smoothstep(0.2, 1.4, distance(vRest, uCrown));
-    totalEmissiveRadiance += bare * uPsy * (0.3 + 0.7 * near) * (0.5 + 1.2 * uPsyFlare) * vec3(0.55, 0.25, 1.0);
+    totalEmissiveRadiance += shogBare * uPsy * (0.3 + 0.7 * near) * (0.5 + 1.2 * uPsyFlare) * vec3(0.55, 0.25, 1.0);
   }`;
-  // The eye-flower: its own shade (shoggoth-eyeface.js), the same power whitening of its open eyes,
-  // and the warm light that pours from it at full power.
+  // The eye-flower: its own shade, the same power whitening of its open eyes, and the warm light
+  // that pours from it at full power.
   const flowerLight = `#include <emissivemap_fragment>
   {
-    float bare = 1.0 - shogLid;
-    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), uEyes * 0.7 * bare);
-    totalEmissiveRadiance += uEyes * bare * vec3(1.0, 0.99, 1.04) * 1.2 + uMouthGlow * vec3(1.0, 0.93, 0.8) * 2.6;
-    totalEmissiveRadiance += bare * uPsy * (0.5 + 1.2 * uPsyFlare) * vec3(0.55, 0.25, 1.0);
+    diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), uEyes * 0.7 * shogBare);
+    totalEmissiveRadiance += uEyes * shogBare * vec3(1.0, 0.99, 1.04) * 1.2 + uMouthGlow * vec3(1.0, 0.93, 0.8) * 2.6;
+    totalEmissiveRadiance += shogBare * uPsy * (0.5 + 1.2 * uPsyFlare) * vec3(0.55, 0.25, 1.0);
   }`;
 
-  const patch = (material, fragment) => {
+  const patch = (material, fragment, eye = false) => {
     if (!material) return;
     material.onBeforeCompile = (shader) => {
       Object.assign(shader.uniforms, shape);
-      shader.vertexShader = vertexHead + shader.vertexShader.replace('#include <beginnormal_vertex>', bend).replace('#include <begin_vertex>', move);
-      shader.fragmentShader = fragmentHead + fragment(shader.fragmentShader);
+      let vertex = shader.vertexShader.replace('#include <beginnormal_vertex>', bend).replace('#include <begin_vertex>', move);
+      if (eye) vertex = EYE_VERTEX_HEAD + vertex.replace('#include <uv_vertex>', `#include <uv_vertex>\n  ${EYE_VERTEX}`);
+      shader.vertexShader = vertexHead + vertex;
+      shader.fragmentShader = fragmentHead + (eye ? EYE_FRAGMENT_HEAD : '') + fragment(shader.fragmentShader);
     };
     material.needsUpdate = true;
   };
   patch(materials['shoggoth skin'], (f) => f.replace('#include <emissivemap_fragment>', skinLight));
   patch(materials['shoggoth belly'], (f) => f.replace('#include <emissivemap_fragment>', skinLight));
-  patch(materials['shoggoth eye'], (f) => f.replace('#include <map_fragment>', eyeLids).replace('#include <emissivemap_fragment>', eyeLight));
+  patch(materials['shoggoth eye'], (f) => f.replace('#include <map_fragment>', eyeMapGlsl(BODY_EYE)).replace('#include <emissivemap_fragment>', eyeLight), true);
   const flower = materials['shoggoth eyeface'];
   if (flower) {
     // As in Blender: alpha over the cut is solid, the rest is not drawn.
     Object.assign(flower, { transparent: false, depthWrite: true, alphaTest: ALPHA_CUT });
-    patch(flower, (f) => f.replace('#include <map_fragment>', flowerLids).replace('#include <emissivemap_fragment>', flowerLight));
+    patch(flower, (f) => f.replace('#include <map_fragment>', eyeMapGlsl(FLOWER)).replace('#include <emissivemap_fragment>', flowerLight), true);
   }
+  // Each eye decal's texture axes, so its iris can turn toward what it looks at.
+  character.traverse((o) => {
+    if (!o.isMesh || (o.material.name !== 'shoggoth eye' && o.material.name !== 'shoggoth eyeface')) return;
+    const g = o.geometry;
+    const { eyeU, eyeV } = decalAxes(g.attributes.position.array, g.attributes.uv.array, g.index.array);
+    g.setAttribute('shogEyeU', new THREE.BufferAttribute(eyeU, 3));
+    g.setAttribute('shogEyeV', new THREE.BufferAttribute(eyeV, 3));
+  });
+  const mask = createMask(text);
 
   // ----------------------------------------------------------------- anchors
 
@@ -354,6 +344,7 @@ void main() {
   const turn = new THREE.Euler(0, 0, 0, 'YXZ');
   const mTurn = new THREE.Matrix4(), mScale = new THREE.Matrix4(), mTo = new THREE.Matrix4(), mFrom = new THREE.Matrix4();
   const lift = new THREE.Quaternion();
+  let shown = null;   // the face it showed last frame, for the stills' evidence
 
   /// Tentacles on springs: a shake swings them against the hand; let go, they settle.
   function stepJiggle({ dt, held, ax, ay }) {
@@ -410,7 +401,15 @@ void main() {
       const since = P.sinceGulp;
       shape.uGulp.value.set(since * 1.6, since < 0.8 ? 1 - since / 0.8 : 0);
 
-      shape.uLid.value = clamp(P.lid, 0, 1);
+      // Its face (shoggoth-face.js): the lids' shape and the iris from its state, closing at least
+      // as far as the brain's own lid; its eyes turn less the lower its lids.
+      const now = faceFor(P);
+      const closed = clamp(Math.max(P.lid, now.eyes.close), 0, 1);
+      shape.uLids.value.set(closed, now.eyes.split, now.eyes.curve, now.eyes.flat);
+      shape.uIris.value = now.eyes.iris;
+      shape.uGaze.value.set(clamp(gaze.x, -1, 1), clamp(gaze.y, -1, 1), 0).multiplyScalar(1 - 0.7 * closed);
+      mask?.step(now, t, P.reduced);
+      shown = now;
       shape.uPsy.value = P.glow.psy;
       shape.uPsyFlare.value = P.glow.flare;
       shape.uTime.value = t;
@@ -447,6 +446,6 @@ void main() {
       return parseTint(hex);
     },
 
-    internals: { shape, head, visor, materials, root, deform, deformOnGpu, get oozePaths() { return oozePaths; } },
+    internals: { shape, head, visor, materials, root, deform, deformOnGpu, mask, get face() { return shown; }, get oozePaths() { return oozePaths; } },
   };
 }

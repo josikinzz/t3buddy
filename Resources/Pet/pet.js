@@ -1065,7 +1065,7 @@ function pose(t, dt) {
     t, dt, amp, reduced: reducedMotion, look, p, psy, open: mouthOpen, sinceGulp, gulpPulse, patPulse, L, S, startle, odd, busy,
     spinning, dizzy, flinch, nod, nodSide: askNod.tilt, frown, burst, sad, sob, shudder, stretch, yawn, hop, actU, D, beat,
     breath, headDip, drift, swell: swellNow, held: !!drag && !reducedMotion, ax: reducedMotion ? 0 : motion.ax, ay: reducedMotion ? 0 : motion.ay,
-    gaze, lid, fretful: feeling.fretful, satisfied: feeling.satisfied, settle: settle.x,
+    gaze, lid, dozy: feeling.dozy, focused: feeling.focused, fretful: feeling.fretful, satisfied: feeling.satisfied, settle: settle.x,
     face: {
       smile,
       open: debug.mouth ?? mouthOpen,
