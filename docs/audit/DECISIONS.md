@@ -160,3 +160,16 @@ All 36 accepted findings shipped as planned; `scripts/verify.sh --full` is green
 | should-fix: NAME is text in Swift, a regex in Node | ADDRESSED | Node gets NAME escaped and case-insensitive; `(` and upper case now work in both. A self-test of `verify.sh` was not added: the hand-checked cases are in the commit. |
 | should-fix: an unmatched NAME passes | ADDRESSED | verify counts the Swift checks and Node tests that ran and fails at zero. |
 | nit: lanes prescribe `check_widget.sh` | ADDRESSED | The three forward-looking lines name `verify.sh --full`; lines citing the old script as evidence stay as history. |
+
+## Review: shoggoth pet
+
+`review-shoggoth.md`, on `feat/shoggoth-pet`. All three findings addressed; none dismissed.
+
+| Finding | Verdict | Reason |
+|---|---|---|
+| should-fix: ooze ignores the head and the body's deformation | ADDRESSED | Ooze points are stored at rest and moved each frame by a JS copy of the vertex shader's deformation; a new `weep` still checks the copy against the GPU (under 1 mm) with the head turned 18.8°, and capture fails if they disagree. A track whose first ray missed its eye is now skipped. |
+| should-fix: the eye-flower never blinks or squints | ADDRESSED | One lid function serves both eye materials; the flower's 8 eyes close toward their spokes on the same lid state. A Node test reads the real texture from the GLB; a `blink` still shows it closed. |
+| should-fix: `pet_stills.py compare` passes on missing or different evidence | ADDRESSED | It now fails on an empty set, a missing PNG or state, and any byte difference; checked on four hand-made cases. |
+| owner ask: busy-state white blobs | ADDRESSED in part | Below full power the glow keeps pupils and irises showing. At 15 and over the eyes are still white across, as DESIGN.md says; changing that is the owner's call. |
+
+T3boii's 11 stills stayed byte-identical through every fix (`compare` exit 0).

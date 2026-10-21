@@ -24,11 +24,17 @@ examples.
 | `scripts/verify.sh` | plist lint, AGENTS.md map, publish-scan drill, `swift build`, Swift checks, Node pet tests | about 10 s |
 | `scripts/verify.sh NAME` | only checks and tests whose name contains NAME (plain text, any case); fails if none does | less |
 | `scripts/verify.sh --full` | the above plus the T3 restart drill against a fake T3 | about 2 min |
+| `python3 -I scripts/pet_stills.py capture DIR [--pet KIND]`, then `compare BEFORE AFTER` | deterministic stills of the page in headless Chrome, with hit regions, anchors and orb places beside each; `compare` fails unless both sides have every scene, every PNG is byte-identical and every state matches; `capture` fails when a scene's own evidence does (`weep`: the shoggoth's ooze against its skin as the GPU moves it) | about 4 min a pet (software WebGL) |
 
 `--full` must be green before a merge. Each stage prints its time and exit code. Nothing here
 covers the rendered page, the WKWebView host, packaging or the LaunchAgent: check a visible change
 with a screenshot, and run `scripts/package_app.sh` before judging a change in the app, because
 `run_widget.sh` reuses whatever bundle exists.
+
+T3boii must not change by accident. Before touching `pet.js`, `orbit.js`, `effects.js` or
+`bodies/`, capture his stills; after, capture again and `compare`: every PNG byte-identical and
+every state file the same, unless the change means to change him. Two captures of one tree are
+identical (software WebGL, synthetic clock), so any difference is the change.
 
 ## Map
 
@@ -43,11 +49,14 @@ The feed, in the order data flows:
 | Wire shape | `Feed/FeedSchema.swift`, `OrbitSnapshot.swift`, `Feed/FeedFlags.swift` | state and event JSON, feature flags |
 | Serve | `Feed/FeedServer.swift`, `Feed/FeedDiscovery.swift`, `Sources/T3boiiFeed/main.swift` | loopback SSE, `feed.json`, the helper's options |
 | Relay | `Sources/LocalModelWidget/FeedSupervisor.swift`, `FeedClient.swift`, `Feed/FeedStream.swift` | running the helper, in-app fallback polling, 100 ms batches |
-| Host | `Sources/LocalModelWidget/PetLayer.swift`, `Sources/LocalModelWidgetPanel/PetLayerGeometry.swift` | the pet window, click-through, the JS bridge |
+| Host | `Sources/LocalModelWidget/PetLayer.swift`, `Sources/LocalModelWidgetPanel/PetLayerGeometry.swift`, `PetSettings.swift` | the pet window, click-through, the JS bridge, which pet and its tint |
 | Page | `Resources/Pet/feed.js` | turning events and state into orbit updates; swallow only on `finished` |
 | | `orbit.js` | orbs, rings, marks, eggs, labels, hit regions (DOM canvases) |
 | | `effects.js` | lit 3D effects: glints, marks, seeds, rings |
-| | `pet.js`, `mood.js`, `motion.js`, `skinning.js`, `sounds.js`, `demo.js` | the rig, frame loop, moods, motion primitives, sound, demo |
+| | `pet.js`, `mood.js`, `motion.js`, `skinning.js`, `sounds.js`, `demo.js` | the shared brain (what is going on, reduced to one pose a frame), rig float and sway, frame loop, moods, motion primitives, sound, demo |
+| | `bodies/index.js`, `bodies/t3boii.js`, `bodies/shoggoth.js`, `bodies/shoggoth-eyeface.js` | the pets by kind; each pet's model, ball, anchors, and how it turns the pose into motion |
+| | `still.js`, `scripts/pet_stills.py` | `?still=<scene>&pet=<kind>`: deterministic scenes, captured headless |
+| | `scripts/strip_shoggoth_glb.py` | `Resources/Pet/shoggoth.glb`, cut from the owner's export (kept out of git under `.scratch/`) |
 
 Cards: `Sources/ModelWidgetCore` reads (`LocalModelSession`, `SubscriptionUsage`, `TokenUsage`,
 `SystemProcessSampler`), `Sources/LocalModelWidgetPanel` lays out, `Sources/LocalModelWidget` shows

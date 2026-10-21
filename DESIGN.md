@@ -252,6 +252,27 @@ T3boii is the second deliberate exception, asked for by the owner: a pet, not a 
 
 This motion is the one allowed exception to "no decorative motion"; no card animates for decoration.
 
+### Desk Pet (Shoggoth)
+
+The Shoggoth is the second pet, picked with **Pet** in the Subscription Usage card's gear menu; T3boii stays the default and is unchanged. It is the owner's model: a grey, faceted blob with a dozen tentacles covered in pixel-art eyes, wearing a yellow "UwU" smiley mask over its real face, a flower of eight eyes. It runs on the same brain as T3boii (`pet.js`), so it does everything he does, when he does it; only how it shows each thing is its own (`Resources/Pet/bodies/shoggoth.js`). It has no bones: every motion below is a deformation of its lit materials.
+
+- **Frame, art style, motion, Reduce Motion, sounds, demo:** as T3boii. Everything that comes out of it is 3D and lit. It stands a quarter shorter than him on screen, being much wider. With Reduce Motion its tentacles barely wriggle and never tremble.
+- **Its face:** the mask is a visor hinged at its top edge. Whenever T3boii's mouth would open (to swallow, yawn, gasp, be shaken), the mask flips up and the eye-flower shows; half open is enough to clear it. The flower's irises take the **Shoggoth tint** (gear menu; red by default, six presets or any colour), applied live.
+- **Its forehead:** the top of its head, above the mask. A new agent lights it violet, three ripples lift off it, all its eyes flash violet, and the orb kindles there and swings out. Scheduled seeds drop into it; a mending beam leaves from it.
+- **Swallow:** the mask flips up, the flower sucks inward and the wind spirals into it; the orb goes into the flower, the mask drops, and a gulp ripples back from the flower through its head. The lopsided grin after is a lopsided tilt of its head. The all-done dance is T3boii's, with its tentacles waving round it in turn.
+- **Orbit and everything round it:** rings hug its round middle; the top of a ring tucks about a third of an orb behind its top (between its head and the tentacles arching over it) and the bottom crosses in front of its lower tentacles. Messages come as glints from behind it; queued seeds, moons, provider flips, pull request rings and orb breaths are T3boii's. Question and approval marks float beside its head; failed orbs sink to the worry zone beside its lower body; snoozed eggs rest in a row at its underside; scheduled seeds circle over its head.
+- **Moods:** dozy: heavy lids, slow breath, head down, tentacles sagging. Focused: lids up, leaning in, a quicker wriggle. Satisfied: a squint and T3boii's settle-bounce. Fretful: quick shallow breaths and quick blinks, tentacles drawn in, their tips trembling.
+- **Nod:** for a new question it dips and tilts its head toward the question's side.
+- **Gaze:** its painted eyes cannot move, so its head turns toward whatever T3boii would look at: the mouse, its orbs, a failed orb it frowns at, a question.
+- **Eyes and lids:** every eye on it, the eye-flower's eight included, blinks, squints and droops as one, its lids closing from top and bottom (on the flower, from both sides of each eye toward its spoke). Power whitens only bare eye inside each eye's outline, brightest in its middle; its pupil and iris show through the glow until the eye goes white right across at 15 agents.
+- **Power:** it floats higher and swells as T3boii does, its tentacles lift and spread, its eyes glow from 5 agents and are white from 15, and at 20 the mask lifts and light pours out of the eye-flower (T3boii's god rays and glare, from the flower).
+- **Failure:** it flinches (its tentacles recoil, its head jolts), then frowns at the orb, its head dipping toward it, until you look.
+- **Limits:** where T3boii cries, it darkens and droops: its tentacles sag, its head hangs, its sobs shudder through its tentacles, and its front eyes weep dark glassy ooze that runs down its skin and drips off. Glum after, it stays dim and droopy, with now and then a drop of ooze. The refused threads' orbs dissolve as T3boii's do.
+- **Sleep:** its eyes close, its head droops, it breathes slow and deep, its tentacles sag, and Zs float up; after a while asleep it drools from under the mask's lower edge. It wakes with a start and stretches its tentacles out.
+- **Touch:** petted, it squints, its head flushes pink, it leans in, and hearts pop out. Carried and shaken, its tentacles swing on springs against your hand; shaken hard, it spins with its tentacles flung out and is dizzy, with stars over its head.
+- **Workload, time of day, activity trails:** as T3boii.
+- **Ported from Blender:** the eye-flower material follows its Blender graph (`docs/shoggoth-shader-nodes.png`): nearest sampling, irises (HSL lightness between 0.15 and 0.37) times the tint, Blender's RGB curve approximated by the straight line min(1, x / 0.25) (Blender's is a smooth spline through the same points), and an alpha cut at 0.5. Both eye textures clip outside their image as Blender draws them.
+
 ### Utility Menu
 
 The utility menu is the progressive disclosure point for secondary controls.

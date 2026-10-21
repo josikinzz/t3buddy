@@ -11,6 +11,7 @@ function makeOrbit() {
   return createOrbit({
     body: { height: 320 },
     ball: () => ({ ...BALL }),
+    soles: 1.6,
     foreheadAnchor: () => ({ page: { x: BALL.x, y: BALL.y - 80 }, world: { x: 0, y: 0.8, z: 0.4 } }),
     mouthAnchor: () => ({ x: BALL.x, y: BALL.y + 30 }),
     setHitRegions() {},

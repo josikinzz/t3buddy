@@ -441,6 +441,7 @@ struct ModelWidgetChecks {
         await masonryChecks(&suite)
         await tokenUsageChecks(&suite)
         await petLayerChecks(&suite)
+        await petSettingsChecks(&suite)
         await orbitChecks(&suite)
         await grokRosterChecks(&suite)
         await grokUsageChecks(&suite)

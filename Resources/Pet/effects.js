@@ -105,6 +105,7 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
   function spawn(kind, at, extra = {}) {
     const shape = kind === 'drip' ? geometry.drop : kind === 'shard' ? geometry.shards[Math.floor(Math.random() * geometry.shards.length)] : geometry[kind];
     const material = (kind === 'drip' ? (extra.tear ? materials.tear : materials.drop) : kind === 'shard' ? (extra.ember ? materials.ember : materials.shard) : materials[kind]).clone();
+    if (extra.tint != null) tintGlass(material, extra.tint);
     const mesh = new THREE.Mesh(shape, material);
     mesh.renderOrder = 5;
     group.add(mesh);
@@ -745,20 +746,45 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
   // A tear wells up as a bead at his lower lid, then runs down his cheek along `path` (world
   // points down his skin, as it was when the tear began) leaving a wet glassy streak, and drips
   // off the end. `follow()` gives the matrix carrying that moment's pose to this frame's, so the
-  // tear rides his face as his head bobs and droops. Still (reduced motion), it only wells and fades.
+  // tear rides his face as his head bobs and droops. A skin no single matrix carries (the shoggoth
+  // bends) gives `path` as a function instead: this frame's points, and the tear is laid along them
+  // anew each frame. Still (reduced motion), it only wells and fades.
   const tears = [];
   const WELL_S = 0.75, RUN_S = 1.15, STREAK_FADE_S = 1.4, TEAR_TUBE = 28, TEAR_RADIAL = 6;
-  function tear(path, follow, { size = 1, still = false } = {}) {
-    const curve = new THREE.CatmullRomCurve3(path);
+  /// Glass of another colour: a body whose tears are something else (the shoggoth's dark ooze).
+  function tintGlass(material, { color, emissive }) {
+    material.color.setHex(color);
+    material.emissive.setHex(emissive);
+  }
+
+  /// `tint` ({ color, emissive }) recolours the drop, its streak and the drip it lets go.
+  function tear(path, follow, { size = 1, still = false, tint = null } = {}) {
+    const track = typeof path === 'function' ? path : null;
+    const curve = new THREE.CatmullRomCurve3(track ? track() : path);
     const holder = new THREE.Group();
     holder.matrixAutoUpdate = false;
+    const radius = unit(2.6) * size;
     const drop = new THREE.Mesh(geometry.drop, materials.tear.clone());
-    const streak = new THREE.Mesh(new THREE.TubeGeometry(curve, TEAR_TUBE, unit(2.6) * size, TEAR_RADIAL, false), materials.tear.clone());
+    const streak = new THREE.Mesh(new THREE.TubeGeometry(curve, TEAR_TUBE, radius, TEAR_RADIAL, false), materials.tear.clone());
     streak.geometry.setDrawRange(0, 0);
     drop.renderOrder = 7; streak.renderOrder = 6;
+    if (tint) { tintGlass(drop.material, tint); tintGlass(streak.material, tint); }
     holder.add(streak, drop);
     scene.add(holder);
-    tears.push({ curve, follow, holder, drop, streak, size, still, t0: null, fell: false });
+    tears.push({ curve, follow, track, radius, holder, drop, streak, size, still, tint, t0: null, fell: false });
+  }
+
+  /// Lays a tracked tear along its path as it is this frame.
+  function retrace(tr) {
+    tr.curve.points = tr.track();
+    tr.curve.updateArcLengths();
+    const fresh = new THREE.TubeGeometry(tr.curve, TEAR_TUBE, tr.radius, TEAR_RADIAL, false);
+    for (const name of ['position', 'normal']) {
+      tr.streak.geometry.attributes[name].array.set(fresh.attributes[name].array);
+      tr.streak.geometry.attributes[name].needsUpdate = true;
+    }
+    tr.streak.geometry.boundingSphere = null;
+    fresh.dispose();
   }
 
   const tearTangent = new THREE.Vector3(), tearDown = new THREE.Vector3(0, -1, 0);
@@ -767,8 +793,11 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
       const tr = tears[i];
       if (tr.t0 === null) tr.t0 = t;
       const age = t - tr.t0;
-      tr.holder.matrix.copy(tr.follow());
-      tr.holder.matrixWorldNeedsUpdate = true;
+      if (tr.track) retrace(tr);
+      else {
+        tr.holder.matrix.copy(tr.follow());
+        tr.holder.matrixWorldNeedsUpdate = true;
+      }
       const bead = unit(14) * tr.size;
       if (tr.still) {
         // Reduced motion: a bead wells at his lid and fades, no running.
@@ -800,7 +829,7 @@ export function createEffects({ THREE, scene, pxPerUnit, pageToWorld }) {
         tr.streak.geometry.setDrawRange(0, Infinity);
         tr.holder.updateMatrixWorld(true);
         const end = tr.curve.getPointAt(1).applyMatrix4(tr.holder.matrixWorld);
-        spawn('drip', end, { tear: true });
+        spawn('drip', end, { tear: true, tint: tr.tint });
       }
       // The wet streak dries off after the drop has passed.
       const dry = smooth(WELL_S + RUN_S * 0.6, WELL_S + RUN_S + STREAK_FADE_S, age);

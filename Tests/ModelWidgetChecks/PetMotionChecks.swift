@@ -17,6 +17,11 @@ extension ModelWidgetChecks {
             try expect(buzzes.isEmpty, "Faster than \(cap) rad/s reads as a buzz; use tremble(t, rate) from Resources/Pet/motion.js:\n  " + buzzes.joined(separator: "\n  "))
         }
 
+        suite.check("The motion rules read every body module as well as the page's scripts") {
+            let scripts = try petScripts()
+            try expect(scripts.contains("bodies/t3boii.js") && scripts.contains("pet.js"), "petScripts() lists bodies/*.js beside the page's scripts: \(scripts)")
+        }
+
         suite.check("Pet sways whose pace changes advance their own phase, never the clock over a runtime period") {
             var sweeps: [String] = []
             for name in try petScripts() {
@@ -73,9 +78,12 @@ extension ModelWidgetChecks {
 
     private static let petPage = URL(fileURLWithPath: #filePath).deletingLastPathComponent().appendingPathComponent("../../Resources/Pet").standardizedFileURL
 
-    /// The pet scripts that animate, sorted; motion.js owns the shake and is exempt.
+    /// The pet scripts that animate, body modules included, sorted; motion.js owns the shake and is exempt.
     private static func petScripts() throws -> [String] {
-        try FileManager.default.contentsOfDirectory(atPath: petPage.path).filter { $0.hasSuffix(".js") && $0 != "motion.js" }.sorted()
+        let files = FileManager.default
+        let page = try files.contentsOfDirectory(atPath: petPage.path).filter { $0.hasSuffix(".js") && $0 != "motion.js" }
+        let bodies = try files.contentsOfDirectory(atPath: petPage.appendingPathComponent("bodies").path).filter { $0.hasSuffix(".js") }.map { "bodies/" + $0 }
+        return (page + bodies).sorted()
     }
 
     private static let sineCall = try! Regex<Substring>(#"Math\.sin\("#)

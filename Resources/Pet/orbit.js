@@ -95,7 +95,7 @@ const FLIP_IN_S = 0.18, FLIP_OUT_S = 0.24, FLIP_FLASH_S = 0.6, MODEL_FLASH_S = 0
 export const PROVIDER_FLASH = { claudeAgent: '#d97757', codex: '#0a84ff', kimi: '#40c8e0', antigravity: '#ff6fb1', opencode: '#c9ced6', grok: '#f5f5f7', grokBot: '#f5f5f7' };
 // Snoozed: up to six orbs rest as frosted eggs in a row at his feet, soonest to wake in the middle.
 const EGG_MAX = 6, EGG_GAP = 0.95, EGG_ARC = 0.06, EGG_SCALE = 0.86;   // in orb sizes
-const SOLES_R = 1.62, EGG_BELOW = 0.12;     // his soles, and the eggs' middles, in ball radii below its centre
+const EGG_BELOW = 0.12;                     // the eggs' middles, in ball radii below his soles
 const EGG_BREATH_S = 6, EGG_BREATH = 0.01;
 const EGG_ROCK_S = 60, EGG_ROCK_DEG = 6, EGG_HOP_S = 20, EGG_HOP_EVERY = 6, EGG_HOP = 0.06, EGG_HOP_LEN = 0.35;
 const HATCH_CRACK_S = 0.3, HATCH_SPLIT_S = 0.6, HATCH_POP_S = 0.35;
@@ -185,9 +185,10 @@ export function ringCounts(n, geo) {
   return counts;
 }
 
-/// `ball()` is his ball body on the page this frame ({x, y, r}, following float, swell and drag);
+/// `ball()` is his ball body on the page this frame ({x, y, r}, following float, swell and drag), and
+/// `soles` how far below its centre his underside rests, in ball radii (bodies/index.js);
 /// `foreheadAnchor()` and `mouthAnchor()` give page points; `events` hears spawns and swallows.
-export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, setHitRegions, post, events = {}, front, back }) {
+export function createOrbit({ body, ball, soles, foreheadAnchor, mouthAnchor, setHitRegions, post, events = {}, front, back }) {
   const orbs = new Map();        // id -> orb record
   let order = [];                // ids in arrival order (slot order)
   let frameOrder = [];           // orbs, parents before their satellites
@@ -736,7 +737,7 @@ export function createOrbit({ body, ball, foreheadAnchor, mouthAnchor, setHitReg
     const k = EGG_SLOTS[orb.eggRank];
     return {
       x: hub.x + k * ORB * EGG_GAP,
-      y: Math.min(window.innerHeight - ORB * 0.7, hub.y + hub.r * (SOLES_R + EGG_BELOW) - ORB * EGG_ARC * k * k),
+      y: Math.min(window.innerHeight - ORB * 0.7, hub.y + hub.r * (soles + EGG_BELOW) - ORB * EGG_ARC * k * k),
     };
   }
 

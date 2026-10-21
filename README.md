@@ -26,6 +26,7 @@ Everything lives in one transparent window pinned to the desktop (below normal w
 - If the Grok Bot app is installed, its in-flight agents appear as orbs too.
 - He can be petted, dragged and shaken, falls asleep when nothing is running, and honours Reduce Motion. See DESIGN.md for the full behaviour.
 - Playing with him makes quiet, deep, non-verbal sound effects (soft low hums, thuds and whooshes with reverb; no voice, nothing shrill), generated with ElevenLabs and bundled in `Resources/Pet/sfx/` (the crying sound, `sob.mp3`, is cut from those clips with ffmpeg). Turn them off with **T3boii sounds** in the Subscription Usage card's gear menu.
+- **Pet** in the same menu swaps T3boii for the Shoggoth, a tentacled, many-eyed blob in a smiley mask that does everything he does in its own way (it flips its mask up to eat, and its eyes weep ooze where he would cry); **Shoggoth tint** colours the irises of its hidden eye-flower. T3boii is the default.
 
 **Cards**
 - **Local Models:** the model currently loaded on Bonsai (`http://127.0.0.1:8080`), Magnitude (`http://127.0.0.1:10100` and the `magnitude` CLI) or Ollama (`http://127.0.0.1:11434`), with an Unload button. A host that is not running is skipped. The gear menu also opens a bundled model benchmark document (`Resources/ModelBenchmarks.*`).
@@ -166,7 +167,7 @@ Sources/
   T3boiiFeed/             the t3boii-feed helper's entry point
 Tests/ModelWidgetChecks/  Swift checks, run as an executable
 Tests/Pet/                Node tests for the pet page's modules
-Resources/Pet/            T3boii's WKWebView page (three.js vendored under Pet/vendor), model, badges, sounds
+Resources/Pet/            the pet's WKWebView page (three.js vendored under Pet/vendor), models (bodies/), badges, sounds
 scripts/                  verify, package, run, LaunchAgent, demo and publish scripts
 ```
 
@@ -178,5 +179,6 @@ The code is MIT licensed (see [LICENSE](LICENSE)). Third-party assets keep their
 
 - three.js, vendored under `Resources/Pet/vendor/three`, is MIT licensed (its own `LICENSE` is alongside it).
 - The T3boii character (`Resources/Pet/T3-rigged.glb`) is original: Design by maria_rcks ([@maria_rcks](https://x.com/maria_rcks) on X), model by Meshy, animated by Sol 6.1 and Opus 5.5.
+- The shoggoth (`Resources/Pet/shoggoth.glb`, cut from the owner's Blender export by `scripts/strip_shoggoth_glb.py`) was supplied by the owner; its author and terms are unknown and must be confirmed before it is published. Its skin textures are named `Asphalt009_1K_Color` and `Asphalt009_1K_NormalGL`, the naming ambientCG uses for its CC0 textures; that source is not confirmed. Its pixel-art eye textures (`eye`, `eyeface`) came in the same file.
 - Provider logos under `Resources/Pet/badges` (Claude, Codex, Grok Bot and others) belong to their owners and are used only to identify each provider.
 - The sound effects under `Resources/Pet/sfx` were generated with ElevenLabs.

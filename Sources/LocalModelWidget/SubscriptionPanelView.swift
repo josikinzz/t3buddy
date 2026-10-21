@@ -1,11 +1,14 @@
 import LocalModelWidgetPanel
 import ModelWidgetCore
+import AppKit
 import SwiftUI
 
 struct SubscriptionPanelView: View {
     @ObservedObject var runtime: SubscriptionPanelRuntime
     @Binding var windowMode: DesktopPanelWindowMode
     @AppStorage(PetLayer.soundsDefaultsKey) private var petSounds = true
+    @AppStorage(PetKind.defaultsKey) private var petKind = PetKind.t3boii
+    @AppStorage(PetTint.defaultsKey) private var shoggothTint = PetTint.default.hex
     var body: some View {
         // The card grows to fit its rows; the dashboard grid gives it its natural height.
         panel.fixedSize(horizontal: false, vertical: true)
@@ -23,6 +26,15 @@ struct SubscriptionPanelView: View {
                     WindowModeMenuSection(mode: $windowMode)
                     IdleHideMenuItems()
                     Toggle("T3boii sounds", isOn: $petSounds)
+                    Picker("Pet", selection: $petKind) {
+                        ForEach(PetKind.allCases, id: \.self) { Text($0.displayName).tag($0) }
+                    }
+                    Menu("Shoggoth tint") {
+                        Picker("Shoggoth tint", selection: tint) {
+                            ForEach(PetTint.presets, id: \.self) { Text($0.name).tag($0.tint) }
+                        }.pickerStyle(.inline).labelsHidden()
+                        Button("Other…") { ShoggothTintPanel.shared.show(tint.wrappedValue) { tint.wrappedValue = $0 } }
+                    }.disabled(petKind != .shoggoth)
                     Button("Connect T3") { NotificationCenter.default.post(name: FeedClient.connectT3Notification, object: nil) }
                 } label: {
                     Image(systemName: "gearshape").font(.system(size: 13, weight: .semibold)).frame(width: 24, height: 22)
@@ -41,11 +53,42 @@ struct SubscriptionPanelView: View {
         .padding(12).frame(width: DesktopPanelLayout.panelWidth)
         .background(.regularMaterial).clipShape(RoundedRectangle(cornerRadius: 14))
     }
+    /// Every write goes through PetTint's parser, so only a validated `#rrggbb` is ever stored.
+    private var tint: Binding<PetTint> {
+        Binding(get: { PetTint(parsing: shoggothTint) }, set: { shoggothTint = $0.hex })
+    }
     private func footer(now: Date) -> String {
         if runtime.refreshing { return "Checking…" }
         guard let updated = runtime.updated else { return "Waiting for first check" }
         let minutes = max(0, Int(now.timeIntervalSince(updated) / 60))
         return "Checked \(minutes == 0 ? "just now" : "\(minutes)m ago") · refreshes every 5m"
+    }
+}
+
+/// The system colour panel as the "Other…" tint, reporting its colour in sRGB as the user drags.
+@MainActor
+private final class ShoggothTintPanel: NSObject {
+    static let shared = ShoggothTintPanel()
+    private var apply: ((PetTint) -> Void)?
+
+    func show(_ current: PetTint, apply: @escaping (PetTint) -> Void) {
+        let panel = NSColorPanel.shared
+        // Clear the target first so setting the starting colour does not report it back.
+        panel.setTarget(nil)
+        panel.showsAlpha = false
+        let rgb = current.components
+        panel.color = NSColor(srgbRed: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+        self.apply = apply
+        panel.setTarget(self)
+        panel.setAction(#selector(colorChanged(_:)))
+        // The app is an accessory with no key window, so the panel must be pulled forward.
+        NSApp.activate(ignoringOtherApps: true)
+        panel.orderFrontRegardless()
+    }
+
+    @objc private func colorChanged(_ sender: NSColorPanel) {
+        guard let color = sender.color.usingColorSpace(.sRGB) else { return }
+        apply?(PetTint(red: color.redComponent, green: color.greenComponent, blue: color.blueComponent))
     }
 }
 

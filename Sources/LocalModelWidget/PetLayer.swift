@@ -31,6 +31,8 @@ final class PetLayer: NSObject, WKNavigationDelegate {
     /// The feed's last state, `{"state": …}`, for a page that reloads.
     private var feedStateJSON: String?
     private let defaults = UserDefaults.standard
+    /// The kind the page was last loaded with; a different stored kind reloads it.
+    private var loadedKind: PetKind?
 
     func start() {
         guard panel == nil else { return }
@@ -91,14 +93,15 @@ final class PetLayer: NSObject, WKNavigationDelegate {
         return configuration
     }
 
-    /// Hands the page its starting position before any page script runs.
+    /// Hands the page its starting position, pet and tint before any page script runs.
     private func installConfigScript(in controller: WKUserContentController, layerSize: CGSize) {
         controller.removeAllUserScripts()
         let stored = defaults.dictionary(forKey: PetLayerGeometry.positionDefaultsKey)
         let position = PetLayerGeometry.restoredPosition(stored: stored, layerSize: layerSize)
-        let config: [String: Any] = ["position": PetLayerGeometry.encodePosition(position), "reducedMotion": Self.reduceMotion, "muted": !Self.soundsEnabled(defaults)]
-        guard let data = try? JSONSerialization.data(withJSONObject: config), let json = String(data: data, encoding: .utf8) else { return }
-        controller.addUserScript(WKUserScript(source: "window.__t3boiiConfig = \(json);", injectionTime: .atDocumentStart, forMainFrameOnly: true))
+        let kind = PetKind(stored: defaults.string(forKey: PetKind.defaultsKey))
+        loadedKind = kind
+        guard let source = PetPageConfig.script(position: PetLayerGeometry.encodePosition(position), reducedMotion: Self.reduceMotion, muted: !Self.soundsEnabled(defaults), pet: kind, tint: PetTint(parsing: defaults.string(forKey: PetTint.defaultsKey))) else { return }
+        controller.addUserScript(WKUserScript(source: source, injectionTime: .atDocumentStart, forMainFrameOnly: true))
     }
 
     private func loadPage() {
@@ -167,6 +170,31 @@ final class PetLayer: NSObject, WKNavigationDelegate {
         callPage("window.t3boii.setMuted(\(muted))")
     }
 
+    private var sentTint: PetTint?
+
+    /// Mirrors the gear menu's "Shoggoth tint" onto the page, live.
+    private func updateTint(force: Bool = false) {
+        let tint = PetTint(parsing: defaults.string(forKey: PetTint.defaultsKey))
+        guard force || tint != sentTint else { return }
+        sentTint = tint
+        callPage("window.t3boii.setTint?.('\(tint.hex)')")
+    }
+
+    /// The gear menu's "Pet" picker: a new kind is a new body, so the page reloads with a
+    /// config that names it, and the ready handshake replays the rest.
+    private func updateKind() {
+        guard let webView, loadedKind != nil, PetKind(stored: defaults.string(forKey: PetKind.defaultsKey)) != loadedKind else { return }
+        reloadPage(webView)
+    }
+
+    private func reloadPage(_ webView: WKWebView) {
+        pageReady = false
+        hitRects = []
+        updateMouseCapture()
+        installConfigScript(in: webView.configuration.userContentController, layerSize: panel?.frame.size ?? webView.bounds.size)
+        webView.reload()
+    }
+
     private func updateReducedMotion() {
         callPage("window.t3boii.setReducedMotion(\(Self.reduceMotion))")
     }
@@ -193,10 +221,12 @@ final class PetLayer: NSObject, WKNavigationDelegate {
             defaults.set(PetLayerGeometry.encodePosition(clamped), forKey: PetLayerGeometry.positionDefaultsKey)
         case "ready":
             if body["ok"] as? Bool == true {
+                NSLog("T3boii: page ready with the \(body["pet"] ?? "unknown") body")
                 pageReady = true
                 updatePause()
                 updateReducedMotion()
                 updateMuted(force: true)
+                updateTint(force: true)
                 if let feedStateJSON { callPage("window.t3boii.feed(\(feedStateJSON))") }
             } else {
                 NSLog("T3boii: page failed to start: \(body["error"] ?? "unknown error")")
@@ -293,7 +323,7 @@ final class PetLayer: NSObject, WKNavigationDelegate {
         observe(workspace, NSWorkspace.accessibilityDisplayOptionsDidChangeNotification) { $0.updateReducedMotion() }
         observe(.default, NSWindow.didChangeOcclusionStateNotification) { $0.updatePause() }
         observe(.default, NSApplication.didChangeScreenParametersNotification) { $0.refitToScreen() }
-        observe(.default, UserDefaults.didChangeNotification) { $0.updateMuted() }
+        observe(.default, UserDefaults.didChangeNotification) { $0.updateMuted(); $0.updateTint(); $0.updateKind() }
     }
 
     private func observe(_ center: NotificationCenter, _ name: Notification.Name, _ action: @escaping @MainActor (PetLayer) -> Void) {
@@ -327,11 +357,7 @@ final class PetLayer: NSObject, WKNavigationDelegate {
 
     func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
         NSLog("T3boii: web content process ended; reloading")
-        pageReady = false
-        hitRects = []
-        updateMouseCapture()
-        installConfigScript(in: webView.configuration.userContentController, layerSize: panel?.frame.size ?? webView.bounds.size)
-        webView.reload()
+        reloadPage(webView)
     }
 }
 
